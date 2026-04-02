@@ -1,0 +1,33 @@
+[DEBUG] Device: cpu
+[DEBUG] Step 1: Loading data...
+[DEBUG] prices shape: (1792, 50)
+[DEBUG] Step 2: Sentiment...
+[DEBUG] sentiment shape: (1792, 5)
+[DEBUG] Step 3: Feature engineering...
+[DEBUG] Tickers: 50
+[DEBUG] Step 4: Building graphs...
+[DEBUG] Graphs built: 0
+[DEBUG] Step 5: Labels...
+
+[ERROR] TRACEBACK:
+Traceback (most recent call last):
+  File "C:\Users\HP\OneDrive\Desktop\frp1\debug_train2.py", line 66, in <module>
+    labels = create_labels(
+  File "C:\Users\HP\OneDrive\Desktop\frp1\data\crash_labeler.py", line 166, in create_labels
+    crash_label = label_crashes_combined(
+  File "C:\Users\HP\OneDrive\Desktop\frp1\data\crash_labeler.py", line 94, in label_crashes_combined
+    label_pct = label_crashes_percentile(nifty_series, percentile, forward_days=forward_days)
+  File "C:\Users\HP\OneDrive\Desktop\frp1\data\crash_labeler.py", line 45, in label_crashes_percentile
+    threshold = np.percentile(fwd_returns.dropna(), percentile)
+  File "C:\Users\HP\AppData\Local\Programs\Python\Python310\lib\site-packages\numpy\lib\function_base.py", line 4283, in percentile
+    return _quantile_unchecked(
+  File "C:\Users\HP\AppData\Local\Programs\Python\Python310\lib\site-packages\numpy\lib\function_base.py", line 4555, in _quantile_unchecked
+    return _ureduce(a,
+  File "C:\Users\HP\AppData\Local\Programs\Python\Python310\lib\site-packages\numpy\lib\function_base.py", line 3823, in _ureduce
+    r = func(a, **kwargs)
+  File "C:\Users\HP\AppData\Local\Programs\Python\Python310\lib\site-packages\numpy\lib\function_base.py", line 4721, in _quantile_ureduce_func
+    result = _quantile(arr,
+  File "C:\Users\HP\AppData\Local\Programs\Python\Python310\lib\site-packages\numpy\lib\function_base.py", line 4830, in _quantile
+    slices_having_nans = np.isnan(arr[-1, ...])
+IndexError: index -1 is out of bounds for axis 0 with size 0
+

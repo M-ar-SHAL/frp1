@@ -1,0 +1,42 @@
+python : Traceback (most 
+recent call last):
+At line:1 char:1
++ python -c "
++ ~~~~~~~~~~~
+    + CategoryInfo         
+     : NotSpecified: (Tra  
+  ceback (most recent ca   
+ ll last)::String) [],     
+RemoteException
+    + FullyQualifiedErrorI 
+   d : NativeCommandError
+ 
+  File "<string>", line 
+12, in <module>
+  File "C:\Users\HP\OneDriv
+e\Desktop\frp1\.\experiment
+s\run_experiment.py", line 
+70, in run_experiment
+    print("\U0001f4ca STEP 
+1: Loading market data...")
+  File "C:\Users\HP\AppData
+\Local\Programs\Python\Pyth
+on310\lib\encodings\cp1252.
+py", line 19, in encode
+    return codecs.charmap_e
+ncode(input,self.errors,enc
+oding_table)[0]
+UnicodeEncodeError: 
+'charmap' codec can't 
+encode character 
+'\U0001f4ca' in position 
+0: character maps to 
+<undefined>
+
+============================================================
+  FAPT-GNN Experiment ? NIFTY 50 Crash Prediction
+  Device: CPU
+  Time  : 2026-04-02 15:10:52
+============================================================
+
+ERROR: UnicodeEncodeError 'charmap' codec can't encode character '\U0001f4ca' in position 0: character maps to <undefined>

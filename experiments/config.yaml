@@ -1,0 +1,93 @@
+# FAPT-GNN Experiment Configuration
+# Edit these values to customize your training run
+
+# ─────────────────────────────────────
+# DATA
+# ─────────────────────────────────────
+data:
+  start_date: "2010-01-01"
+  end_date: null          # null = today
+  cache_dir: "data/cache"
+  use_gdelt: false        # true = fetch real GDELT news (slow), false = use VIX proxy
+
+# ─────────────────────────────────────
+# FEATURE ENGINEERING
+# ─────────────────────────────────────
+features:
+  vol_window: 20          # rolling window for σ_i volatility
+  centrality_window: 60   # rolling window for C_i centrality computation
+  liquidity_window: 20    # rolling window for L_i liquidity stress
+  centrality_threshold: 0.3  # minimum correlation to form graph edge
+
+# ─────────────────────────────────────
+# GRAPH BUILDER
+# ─────────────────────────────────────
+graph:
+  corr_threshold: 0.2     # minimum correlation to include as edge
+  graph_window: 60        # rolling window for graph construction (days)
+  layer_weights:
+    alpha: 0.4            # correlation graph weight
+    beta: 0.25            # sector graph weight
+    gamma: 0.20           # sentiment graph weight
+    delta: 0.15           # volatility spillover weight
+
+# ─────────────────────────────────────
+# CRASH LABELS
+# ─────────────────────────────────────
+labels:
+  percentile: 5.0         # bottom X% returns = crash
+  drawdown_threshold: -0.07   # -7% forward drawdown = crash
+  forward_days: 5         # forward-looking window for return
+  dd_window: 10           # forward drawdown window
+  max_tte_horizon: 60     # max time-to-crash horizon (days)
+
+# ─────────────────────────────────────
+# MODEL ARCHITECTURE
+# ─────────────────────────────────────
+model:
+  node_feature_dim: 7     # [return, vol, centrality, sentiment, liquidity, momentum, drawdown]
+  gnn_hidden_dim: 64
+  gnn_num_layers: 2
+  gnn_heads: 4
+  energy_hidden_dim: 32
+  temporal_d_model: 128
+  temporal_num_layers: 3
+  temporal_nhead: 4
+  seq_len: 30             # number of past timesteps fed to temporal model
+  dropout: 0.2
+  use_transformer: true   # true = Transformer, false = LSTM
+
+# ─────────────────────────────────────
+# TRAINING
+# ─────────────────────────────────────
+training:
+  epochs: 50
+  lr: 0.001
+  lr_min: 0.00001
+  weight_decay: 0.0001
+  patience: 10            # early stopping patience
+  train_ratio: 0.70
+  val_ratio: 0.15
+  # test is the remaining 0.15
+  stride: 1               # sliding window stride (1 = maximum overlap)
+  max_grad_norm: 1.0
+  ablation_epochs: 25     # epochs per variant in ablation study (faster than full training)
+
+# ─────────────────────────────────────
+# LOSS WEIGHTS (α, β, γ, δ, η from paper)
+# ─────────────────────────────────────
+loss:
+  alpha: 1.0      # crash classification (primary task)
+  beta: 0.3       # time-to-crash regression
+  gamma: 0.2      # energy regularization
+  delta: 0.1      # graph smoothness
+  eta: 0.1        # temporal fragility consistency
+  use_focal: true # focal loss for class imbalance
+
+# ─────────────────────────────────────
+# OUTPUT / LOGGING
+# ─────────────────────────────────────
+output:
+  checkpoint_dir: "experiments/checkpoints"
+  results_dir: "experiments/results"
+  log_interval: 5   # print metrics every N epochs
