@@ -1,0 +1,92 @@
+# Fast Training Configuration for FAPT-GNN
+# Use this for quick experimentation and testing
+
+# ─────────────────────────────────────
+# DATA
+# ─────────────────────────────────────
+data:
+  start_date: "2020-01-01" # REDUCE from 2010 to 2020 (fewer samples, 6.5 years instead of 16)
+  end_date: null
+  cache_dir: "data/cache"
+  use_gdelt: false
+
+# ─────────────────────────────────────
+# FEATURE ENGINEERING (OPTIMIZED)
+# ─────────────────────────────────────
+features:
+  vol_window: 15 # REDUCED from 20 → faster rolling computations
+  centrality_window: 30 # REDUCED from 60 → 50% faster centrality calculation!!!
+  liquidity_window: 15 # REDUCED from 20
+  centrality_threshold: 0.3
+
+# ─────────────────────────────────────
+# GRAPH BUILDER (OPTIMIZED)
+# ─────────────────────────────────────
+graph:
+  corr_threshold: 0.2
+  graph_window: 30 # REDUCED from 60 → 50% faster graph construction
+  layer_weights:
+    alpha: 0.4
+    beta: 0.25
+    gamma: 0.20
+    delta: 0.15
+
+# ─────────────────────────────────────
+# CRASH LABELS
+# ─────────────────────────────────────
+labels:
+  percentile: 5.0
+  drawdown_threshold: -0.07
+  forward_days: 5
+  dd_window: 10
+  max_tte_horizon: 60
+
+# ─────────────────────────────────────
+# MODEL ARCHITECTURE (OPTIMIZED)
+# ─────────────────────────────────────
+model:
+  node_feature_dim: 7
+  gnn_hidden_dim: 32 # REDUCED from 64 → 4x faster model
+  gnn_num_layers: 1 # REDUCED from 2 → fewer layers
+  gnn_heads: 2 # REDUCED from 4 → fewer attention heads
+  energy_hidden_dim: 16 # REDUCED from 32
+  temporal_d_model: 64 # REDUCED from 128 → 4x faster transformer
+  temporal_num_layers: 1 # REDUCED from 3 → fewer transformer blocks
+  temporal_nhead: 2 # REDUCED from 4
+  seq_len: 15 # REDUCED from 30 → 2x fewer timesteps processed
+  dropout: 0.2
+  use_transformer: true
+
+# ─────────────────────────────────────
+# TRAINING (OPTIMIZED)
+# ─────────────────────────────────────
+training:
+  epochs: 10 # REDUCED from 50 for quick testing
+  lr: 0.001
+  lr_min: 0.00001
+  weight_decay: 0.0001
+  patience: 10
+  train_ratio: 0.70
+  val_ratio: 0.15
+  stride: 5 # CHANGED from 1 → use every 5th sample (5x fewer batches!)
+  max_grad_norm: 1.0
+  ablation_epochs: 10
+
+# ─────────────────────────────────────
+# LOSS WEIGHTS
+# ─────────────────────────────────────
+loss:
+  alpha: 1.0
+  beta: 0.3
+  gamma: 0.2
+  delta: 0.1
+  eta: 0.1
+  use_focal: true
+
+# ─────────────────────────────────────
+# OUTPUT
+# ─────────────────────────────────────
+output:
+  checkpoint_dir: "experiments/checkpoints"
+  results_dir: "experiments/results"
+  log_interval: 1

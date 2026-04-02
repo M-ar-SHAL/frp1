@@ -190,7 +190,7 @@ def run_experiment(config: dict):
     # Load best checkpoint
     ckpt_path = os.path.join(config["output"]["checkpoint_dir"], "best_model.pt")
     if os.path.exists(ckpt_path):
-        ckpt = torch.load(ckpt_path, map_location=device)
+        ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
         model.load_state_dict(ckpt["model_state_dict"])
         print(f"[Eval] Loaded best model from epoch {ckpt['epoch']} (val AUC={ckpt['val_auc']:.4f})")
 

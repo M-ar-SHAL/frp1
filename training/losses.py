@@ -44,6 +44,9 @@ class CrashClassificationLoss(nn.Module):
         pred: torch.Tensor,   # (B,) predicted crash probability ∈ [0, 1]
         target: torch.Tensor, # (B,) binary crash label {0, 1}
     ) -> torch.Tensor:
+        # Ensure pred is in valid range for BCE
+        pred = torch.clamp(pred, min=1e-7, max=1-1e-7)
+        
         # Standard BCE
         if self.pos_weight is not None:
             pw = torch.tensor(self.pos_weight, device=pred.device)

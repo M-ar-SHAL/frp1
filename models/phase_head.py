@@ -86,9 +86,25 @@ class PhaseTransitionHead(nn.Module):
 
         # Î_t = normalized E(t) combined with learned instability
         inst_learned = self.instability_head(shared).squeeze(-1)
-        # Weighted average: learned instability + energy-based instability
-        energy_norm = torch.sigmoid(energy / (energy.detach().std() + 1e-8))
+        
+        # Energy-based instability: normalize energy to [0, 1]
+        # Use safe normalization: (E - E_min) / (E_max - E_min + eps)
+        energy_detached = energy.detach()
+        energy_detached = torch.nan_to_num(energy_detached, nan=0.0, posinf=1.0, neginf=0.0)
+        energy_min = torch.min(energy_detached)
+        energy_max = torch.max(energy_detached)
+        energy_range = torch.clamp(energy_max - energy_min, min=1e-8)
+        energy_norm = torch.sigmoid((energy - energy_min) / energy_range)
+        
         instability = 0.5 * inst_learned + 0.5 * energy_norm  # (B,)
+
+        # Ensure outputs are in valid ranges (numerical stability)
+        crash_prob = torch.nan_to_num(crash_prob, nan=0.5, posinf=1-1e-7, neginf=1e-7)
+        crash_prob = torch.clamp(crash_prob, min=1e-7, max=1-1e-7)
+        time_to_crash = torch.nan_to_num(time_to_crash, nan=0.0, posinf=100.0, neginf=0.0)
+        time_to_crash = torch.clamp(time_to_crash, min=0.0)
+        instability = torch.nan_to_num(instability, nan=0.5, posinf=1.0, neginf=0.0)
+        instability = torch.clamp(instability, min=0.0, max=1.0)
 
         return crash_prob, time_to_crash, instability
 

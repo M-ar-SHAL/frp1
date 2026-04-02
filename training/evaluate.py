@@ -167,7 +167,7 @@ def print_evaluation_report(metrics: Dict, ews: Dict, corr: Dict, model_name: st
     for k, v in corr.items():
         print(f"  {k}: {v:.4f}")
     if "tte_mae_on_crashes" in metrics:
-        print(f"\n⏱️  Time-to-Crash MAE (crash events only): {metrics['tte_mae_on_crashes']:.2f} days")
+        print(f"\n[TIME] Time-to-Crash MAE (crash events only): {metrics['tte_mae_on_crashes']:.2f} days")
     print(f"{'='*60}\n")
 
 

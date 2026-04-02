@@ -171,7 +171,7 @@ def create_labels(
         dd_window=dd_window
     )
 
-    print("[Labels] Computing time-to-crash (τ_t)...")
+    print("[Labels] Computing time-to-crash (tau_t)...")
     tte = compute_time_to_crash(crash_label, max_horizon=max_tte_horizon)
 
     print("[Labels] Computing instability index (I_t)...")
@@ -184,7 +184,7 @@ def create_labels(
     }, index=crash_label.index)
 
     crash_rate = crash_label.mean() * 100
-    print(f"\n[Labels] ✅ Label stats:")
+    print(f"\n[Labels] [OK] Label stats:")
     print(f"  Total samples: {len(labels)}")
     print(f"  Crash days: {crash_label.sum()} ({crash_rate:.1f}%)")
     print(f"  Mean time-to-crash: {tte.mean():.1f} days")

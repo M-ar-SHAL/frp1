@@ -11,9 +11,9 @@ sys.path.insert(0, '.')
 print("[Test] Importing GNN modules...")
 try:
     from models.gnn_core import FragilityAwareGATLayer, FragilityAwareGNN
-    print("✓ Imports successful")
+    print("[OK] Imports successful")
 except Exception as e:
-    print(f"✗ Import failed: {e}")
+    print(f"[FAIL] Import failed: {e}")
     sys.exit(1)
 
 print("\n[Test] Creating test data...")
@@ -34,10 +34,10 @@ try:
         edge_dim=1
     )
     h_out = gat_layer(x, edge_index, fragility, edge_attr)
-    print(f"✓ GAT Layer forward pass successful")
+    print(f"[OK] GAT Layer forward pass successful")
     print(f"  Output shape: {h_out.shape} (expected: {N}, {4*32})")
 except Exception as e:
-    print(f"✗ GAT Layer failed: {e}")
+    print(f"[FAIL] GAT Layer failed: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)
@@ -52,10 +52,10 @@ try:
         edge_dim=1
     )
     h_gnn = gnn(x, edge_index, fragility, edge_attr)
-    print(f"✓ GNN forward pass successful")
+    print(f"[OK] GNN forward pass successful")
     print(f"  Output shape: {h_gnn.shape} (expected: {N}, 32)")
 except Exception as e:
-    print(f"✗ GNN failed: {e}")
+    print(f"[FAIL] GNN failed: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)
@@ -77,17 +77,17 @@ try:
     model = FAPT_GNN(node_feature_dim=d, seq_len=T)
     crash_prob, tte, instability, energy_seq, fragility_seq = model(graph_seq)
     
-    print(f"✓ FAPT-GNN forward pass successful")
+    print(f"[OK] FAPT-GNN forward pass successful")
     print(f"  Crash Prob: {crash_prob.item():.4f}")
     print(f"  Time-to-Crash: {tte.item():.2f} days")
     print(f"  Instability: {instability.item():.4f}")
     
 except Exception as e:
-    print(f"✗ FAPT-GNN failed: {e}")
+    print(f"[FAIL] FAPT-GNN failed: {e}")
     import traceback
     traceback.print_exc()
     sys.exit(1)
 
 print("\n" + "="*60)
-print("✅ All tests passed! GNN fix is working correctly.")
+print("[PASS] All tests passed! GNN fix is working correctly.")
 print("="*60)

@@ -75,6 +75,7 @@ class EnergyLayer(nn.Module):
             F_unsq = fragility.unsqueeze(-1)   # (B, N, 1)
             energy = torch.bmm(torch.bmm(F_unsq.transpose(-1, -2), M), F_unsq).squeeze(-1).squeeze(-1)  # (B,)
 
+        energy = torch.nan_to_num(energy, nan=0.0, posinf=1.0, neginf=0.0)
         return energy
 
     def energy_components(

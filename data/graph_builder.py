@@ -199,10 +199,16 @@ def build_multilayer_adjacency(
          weights["gamma"] * A_sent +
          weights["delta"] * A_vol)
 
+    # Handle NaN values before normalization
+    A = np.nan_to_num(A, nan=0.0, posinf=0.0, neginf=0.0)
+
     # Normalize rows to sum to 1 (stochastic adjacency)
     row_sums = A.sum(axis=1, keepdims=True)
     row_sums = np.where(row_sums == 0, 1, row_sums)
     A_norm = A / row_sums
+    
+    # Final NaN cleanup
+    A_norm = np.nan_to_num(A_norm, nan=0.0, posinf=0.0, neginf=0.0)
 
     return A_norm.astype(np.float32)
 
@@ -226,7 +232,7 @@ def build_pyg_graph(
     node_features: np.ndarray,  # (N, d) — node feature matrix at time t
     adj: np.ndarray,            # (N, N) — adjacency matrix at time t
     fragility: Optional[np.ndarray] = None,  # (N,) — ground-truth fragility if known
-    threshold: float = 0.01
+    threshold: float = 0.001  # Reduced from 0.01 to capture more edges
 ) -> Data:
     """
     Build a PyTorch Geometric Data object for a single timestep.
@@ -321,7 +327,7 @@ def build_graph_sequence(
 
         graphs.append(pyg_data)
 
-    print(f"[Graph] ✅ Built {len(graphs)} graph snapshots.")
+    print(f"[Graph] Built {len(graphs)} graph snapshots.")
     return graphs, returns.index[window:]
 
 

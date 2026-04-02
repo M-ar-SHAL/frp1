@@ -53,7 +53,7 @@ def fetch_price_data(
         print(f"[Data] Loading cached prices from {cache_file}")
         return pd.read_parquet(cache_file)
 
-    print(f"[Data] Downloading NIFTY 50 prices: {start} → {end}")
+    print(f"[Data] Downloading NIFTY 50 prices: {start} -> {end}")
     raw = yf.download(
         tickers,
         start=start,
@@ -163,7 +163,7 @@ def load_all_data(
     macro = macro.reindex(common_idx).ffill().bfill()
 
     print(f"\n[Data] Loaded {len(prices)} trading days × {len(prices.columns)} stocks")
-    print(f"[Data] Date range: {prices.index[0].date()} → {prices.index[-1].date()}")
+    print(f"[Data] Date range: {prices.index[0].date()} -> {prices.index[-1].date()}")
 
     return {
         "prices": prices,

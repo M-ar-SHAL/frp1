@@ -241,7 +241,7 @@ def build_all_features(
     # Align all to returns index
     common_idx = returns.index
 
-    print("[Features] Computing volatility σ_i(t)...")
+    print("[Features] Computing volatility sigma_i(t)...")
     volatility = compute_volatility(returns, vol_window)
     garch_vol = compute_garch_proxy(returns, vol_window)
 
@@ -264,7 +264,7 @@ def build_all_features(
     # Sentiment: align to common index
     sentiment = sentiment_features.reindex(common_idx).ffill().bfill()
 
-    print(f"\n[Features] ✅ Feature engineering complete.")
+    print(f"\n[Features] [OK] Feature engineering complete.")
     print(f"  Shape: {returns.shape[0]} timesteps × {returns.shape[1]} stocks")
 
     return {
@@ -285,7 +285,7 @@ def build_node_feature_matrix(features: Dict) -> Dict[str, pd.DataFrame]:
     """
     Build the final node feature matrix x_i(t) for each timestep.
 
-    x_i(t) = [return, σ_i, centrality_i, sentiment_diverge, liquidity_i,
+    x_i(t) = [return, sigma_i, centrality_i, sentiment_diverge, liquidity_i,
                momentum_i, drawdown_i]  (7 features per node)
 
     Also returns system-level features (same for all nodes):

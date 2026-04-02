@@ -15,7 +15,7 @@ CONFIG_PATH = "experiments/config.yaml"
 CHECKPOINT_DIR = "experiments/checkpoints"
 CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, "best_model.pt")
 
-st.set_page_config(page_title="FAPT-GNN Dashboard", layout="wide", page_icon="📈")
+st.set_page_config(page_title="FAPT-GNN Dashboard", layout="wide", page_icon=":chart_with_upwards_trend:")
 
 # ---------------------------------------------------------
 # IMPORT FAPT-GNN LOGIC
@@ -114,7 +114,7 @@ with tab2:
     model_exists = os.path.exists(CHECKPOINT_PATH)
     if model_exists:
         st.success("Trained Checkpoint Located!")
-        checkpoint_data = torch.load(CHECKPOINT_PATH, map_location='cpu')
+        checkpoint_data = torch.load(CHECKPOINT_PATH, map_location='cpu', weights_only=False)
         st.metric("Best Cross-Valid AUC", f"{checkpoint_data.get('val_auc', 0.0):.4f}")
     else:
         st.warning("No pretrained checkpoint found. Model requires initial background training.")
@@ -145,8 +145,8 @@ with tab2:
             loss_cfg = {k: v for k, v in config['loss'].items()}
             criterion = FAPTGNNLoss(pos_weight=pos_weight, **loss_cfg)
             
-            # Short training for UI interaction speed
-            config['training']['epochs'] = 5 
+            # Short training for UI interaction speed (but more thorough than before)
+            config['training']['epochs'] = 20 
             
             history = train(model, train_ds, val_ds, criterion, config['training'], device=device, checkpoint_dir=CHECKPOINT_DIR)
             st.success("Training sequence complete! Refreshing state...")
@@ -172,7 +172,7 @@ with tab3:
                 latest_seq = graph_sequence[-config['model']['seq_len']:]
                 
                 model = FAPT_GNN(**config['model'])
-                ckpt = torch.load(CHECKPOINT_PATH, map_location='cpu')
+                ckpt = torch.load(CHECKPOINT_PATH, map_location='cpu', weights_only=False)
                 model.load_state_dict(ckpt['model_state_dict'])
                 model.eval()
                 
@@ -191,9 +191,9 @@ with tab3:
                 if prob_val > 0.65:
                    st.error("🚨 CRITICAL ALERT: FAPT-GNN Detects Heightened Fragility and Imminent Phase Transition.")
                 elif prob_val > 0.4:
-                   st.warning("⚠️ WARNING: Elevated systemic energy detected in the NIFTY correlations structure.")
+                   st.warning(">> WARNING: Elevated systemic energy detected in the NIFTY correlations structure.")
                 else:
-                   st.success("✅ Normal Market Phase. Component fragility is within stable manifold boundaries.")
+                   st.success("✓ Normal Market Phase. Component fragility is within stable manifold boundaries.")
 
                 st.subheader("Energy Landscape Transition")
                 energy_tensor = torch.cat([e.unsqueeze(0) for e in energy_seq]).squeeze().numpy()
@@ -218,7 +218,7 @@ with tab4:
     """)
     if model_exists:
         try:
-           ckpt = torch.load(CHECKPOINT_PATH, map_location='cpu')
+           ckpt = torch.load(CHECKPOINT_PATH, map_location='cpu', weights_only=False)
            val_metrics = ckpt.get("val_metrics", {}).get("metrics", {})
            st.json(val_metrics)
         except Exception:
