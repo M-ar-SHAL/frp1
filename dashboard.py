@@ -11,9 +11,9 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # Provide absolute paths if necessary, assuming script runs from root
-CONFIG_PATH = "experiments/config.yaml"
+CONFIG_PATH = "experiments/config_fast.yaml"  # Use fast config - matches Colab training
 CHECKPOINT_DIR = "experiments/checkpoints"
-CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, "best_model.pt")
+CHECKPOINT_PATH = os.path.join(CHECKPOINT_DIR, "best_model1.pt")
 
 st.set_page_config(page_title="FAPT-GNN Dashboard", layout="wide", page_icon=":chart_with_upwards_trend:")
 
