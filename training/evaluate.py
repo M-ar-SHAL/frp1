@@ -43,26 +43,49 @@ def compute_all_metrics(
 
     preds_binary = (crash_probs >= best_thresh).astype(int)
 
-    # AUC-ROC
-    try:
+    # Metrics
+    if len(np.unique(crash_labels)) > 1:
         auc_roc = roc_auc_score(crash_labels, crash_probs)
-    except ValueError:
-        auc_roc = 0.0
+    else:
+        auc_roc = 0.5
+
+    # Refined Threshold Search: Maximize F1 but penalize degenerate (all-1s or all-0s) results
+    best_f1, best_thresh = 0, 0.5
+    for t in np.arange(0.1, 0.9, 0.05):
+        preds = (crash_probs >= t).astype(int)
+        f1 = f1_score(crash_labels, preds, zero_division=0)
+        
+        # Check if this threshold is degenerate (predicts only one class)
+        unique_preds = np.unique(preds)
+        is_degenerate = len(unique_preds) < 2
+        
+        # We prefer slightly lower F1 over a degenerate "predict all" solution
+        effective_f1 = f1 * 0.5 if is_degenerate else f1
+        
+        if effective_f1 > best_f1:
+            best_f1 = effective_f1
+            best_thresh = t
+
+    preds_binary = (crash_probs >= best_thresh).astype(int)
 
     # Precision-Recall AUC
     precision, recall, _ = precision_recall_curve(crash_labels, crash_probs)
     pr_auc = auc(recall, precision)
 
-    # F1 at best threshold
+    # Final Metrics at best threshold
     f1 = f1_score(crash_labels, preds_binary, zero_division=0)
-
-    # Confusion matrix
     tn, fp, fn, tp = confusion_matrix(crash_labels, preds_binary, labels=[0, 1]).ravel() if crash_labels.sum() > 0 else (0, 0, 0, 0)
+
+    # Balanced Accuracy: (Sensitivity + Specificity) / 2
+    sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+    specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+    balanced_acc = (sensitivity + specificity) / 2
 
     metrics = {
         "auc_roc": round(auc_roc, 4),
         "pr_auc": round(pr_auc, 4),
         "f1_score": round(f1, 4),
+        "balanced_accuracy": round(balanced_acc, 4),
         "best_threshold": round(best_thresh, 3),
         "precision": round(tp / (tp + fp) if (tp + fp) > 0 else 0, 4),
         "recall": round(tp / (tp + fn) if (tp + fn) > 0 else 0, 4),

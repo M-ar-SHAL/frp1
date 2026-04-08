@@ -1,0 +1,13 @@
+[theme]
+# Primary accent color (Electric Cyan)
+primaryColor = "#00e5ff"
+
+# Background colors
+backgroundColor = "#0b0e14"
+secondaryBackgroundColor = "#151a23"
+
+# Text color
+textColor = "#d1d5db"
+
+# Font
+font = "sans serif"

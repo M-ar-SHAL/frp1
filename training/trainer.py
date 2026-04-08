@@ -98,7 +98,9 @@ def compute_pos_weight(dataset: List[Dict]) -> float:
     normals = len(dataset) - crashes
     if crashes == 0:
         return 1.0
-    return normals / crashes
+    # Use sqrt of ratio to avoid over-weighting and eventual model collapse
+    ratio = normals / crashes
+    return np.sqrt(ratio)
 
 
 def train_epoch(
@@ -210,6 +212,7 @@ def train(
     config: dict,
     device: str = "cuda" if torch.cuda.is_available() else "cpu",
     checkpoint_dir: str = "experiments/checkpoints",
+    epoch_callback = None,
 ) -> Dict:
     """
     Full training loop with early stopping and best model saving.
@@ -270,6 +273,9 @@ def train(
 
         history["train"].append(train_losses)
         history["val"].append({**val_losses, **val_results["metrics"]})
+
+        if epoch_callback:
+            epoch_callback(epoch, epochs, train_losses, val_losses, val_results)
 
         # Best model checkpointing
         if val_auc > best_val_auc:

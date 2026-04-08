@@ -79,6 +79,11 @@ dataset = build_sliding_window_dataset(
     stride=config['training']['stride']  # stride=5 means 5x fewer samples
 )
 train_ds, val_ds, test_ds = walk_forward_split(dataset)
+print(f"    Train size: {len(train_ds)} | Val size: {len(val_ds)} | Test size: {len(test_ds)}")
+train_pos = sum(d['crash_label'].item() for d in train_ds)
+val_pos = sum(d['crash_label'].item() for d in val_ds)
+print(f"    Train Pos: {train_pos} | Val Pos: {val_pos}")
+
 
 # Model setup
 print("[6] Initializing fast model...")
@@ -125,7 +130,7 @@ for epoch in range(1, config['training']['epochs'] + 1):
     
     print(f"Epoch {epoch:2d} | Time: {epoch_time:5.1f}s | "
           f"Train Loss: {train_losses.get('total', 0):.4f} | "
-          f"Val AUC: {val_metrics.get('auc', 0):.4f}")
+          f"Val AUC: {val_metrics['metrics']['auc_roc']:.4f}")
 
 elapsed = time.time() - start_time
 print(f"\n{'='*80}")
@@ -139,7 +144,7 @@ torch.save({
     'epoch': config['training']['epochs'],
     'model_state_dict': model.state_dict(),
     'optimizer_state_dict': optimizer.state_dict(),
-    'val_auc': val_metrics.get('auc', 0),
+    'val_auc': val_metrics['metrics']['auc_roc'],
     'config': config,
 }, "experiments/checkpoints/best_model.pt")
 

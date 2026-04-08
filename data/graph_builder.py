@@ -87,9 +87,9 @@ def build_correlation_graph(
     """
     n = returns_window.shape[1]
     if method == "spearman":
-        corr = returns_window.corr(method="spearman").values
+        corr = returns_window.corr(method="spearman").values.copy()
     else:
-        corr = returns_window.corr(method="pearson").values
+        corr = returns_window.corr(method="pearson").values.copy()
 
     np.fill_diagonal(corr, 0)
     adj = np.where(corr > threshold, corr, 0)
@@ -137,7 +137,7 @@ def build_sentiment_graph(
     n = len(tickers)
 
     # Sentiment is scalar (market-wide); differentiate by volatility correlation
-    vol_corr = volatility_window.corr(method="spearman").values
+    vol_corr = volatility_window.corr(method="spearman").values.copy()
     np.fill_diagonal(vol_corr, 0)
 
     # Sentiment magnitude (absolute fear level)
@@ -161,7 +161,7 @@ def build_volatility_spillover_graph(
     Layer 4: Volatility spillover graph.
     w_ij = corr(σ_i, σ_j) — captures cross-stock volatility clustering.
     """
-    corr = volatility_window.corr(method="spearman").values
+    corr = volatility_window.corr(method="spearman").values.copy()
     np.fill_diagonal(corr, 0)
     adj = np.where(corr > threshold, corr, 0)
     return adj.astype(np.float32)
