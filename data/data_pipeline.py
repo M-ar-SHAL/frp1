@@ -162,6 +162,13 @@ def load_all_data(
     nifty = nifty.reindex(common_idx).ffill().bfill()
     macro = macro.reindex(common_idx).ffill().bfill()
 
+    # Diagnostic: Check for completely missing tickers
+    missing_tickers = [t for t in prices.columns if prices[t].isna().all()]
+    if missing_tickers:
+        print(f"\n[CRITICAL WARNING] The following tickers have 100% missing data: {missing_tickers}")
+        print("[Tip] This usually results in isolated nodes in the Fragility Graph. ")
+        print("[Tip] Delete data/cache/ to force a re-download if this is unexpected.")
+
     print(f"\n[Data] Loaded {len(prices)} trading days × {len(prices.columns)} stocks")
     print(f"[Data] Date range: {prices.index[0].date()} -> {prices.index[-1].date()}")
 
