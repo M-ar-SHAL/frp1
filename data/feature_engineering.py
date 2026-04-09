@@ -90,7 +90,7 @@ def compute_correlation_matrix(returns_window: pd.DataFrame, threshold: float = 
     Compute Spearman correlation matrix for a returns window.
     Threshold: only keep edges with |corr| > threshold (sparse graph).
     """
-    corr = returns_window.corr(method="spearman").values
+    corr = returns_window.corr(method="spearman").values.copy()
     np.fill_diagonal(corr, 0)
     adj = np.where(np.abs(corr) > threshold, corr, 0)
     return adj

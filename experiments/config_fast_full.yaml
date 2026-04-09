@@ -1,0 +1,58 @@
+data:
+  cache_dir: data/cache
+  end_date: null
+  start_date: '2010-01-01'
+  use_gdelt: false
+features:
+  centrality_threshold: 0.3
+  centrality_window: 30
+  liquidity_window: 15
+  vol_window: 15
+graph:
+  corr_threshold: 0.2
+  graph_window: 30
+  layer_weights:
+    alpha: 0.4
+    beta: 0.25
+    delta: 0.15
+    gamma: 0.2
+labels:
+  dd_window: 10
+  drawdown_threshold: -0.07
+  forward_days: 5
+  max_tte_horizon: 60
+  percentile: 5.0
+loss:
+  alpha: 1.0
+  beta: 0.3
+  delta: 0.1
+  eta: 0.1
+  gamma: 0.2
+  use_focal: true
+model:
+  dropout: 0.2
+  energy_hidden_dim: 16
+  gnn_heads: 2
+  gnn_hidden_dim: 32
+  gnn_num_layers: 1
+  node_feature_dim: 7
+  seq_len: 15
+  temporal_d_model: 64
+  temporal_nhead: 2
+  temporal_num_layers: 1
+  use_transformer: true
+output:
+  checkpoint_dir: experiments/checkpoints
+  log_interval: 1
+  results_dir: experiments/results
+training:
+  ablation_epochs: 10
+  epochs: 10
+  lr: 0.001
+  lr_min: 1.0e-05
+  max_grad_norm: 1.0
+  patience: 10
+  stride: 5
+  train_ratio: 0.7
+  val_ratio: 0.15
+  weight_decay: 0.0001

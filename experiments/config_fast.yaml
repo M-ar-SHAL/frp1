@@ -5,7 +5,7 @@
 # DATA
 # ─────────────────────────────────────
 data:
-  start_date: "2020-01-01" # REDUCE from 2010 to 2020 (fewer samples, 6.5 years instead of 16)
+  start_date: "2015-01-01" # INCREASED from 2020 to 2015 (better coverage for validation)
   end_date: null
   cache_dir: "data/cache"
   use_gdelt: false

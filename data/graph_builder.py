@@ -87,9 +87,9 @@ def build_correlation_graph(
     """
     n = returns_window.shape[1]
     if method == "spearman":
-        corr = returns_window.corr(method="spearman").values
+        corr = returns_window.corr(method="spearman").values.copy()
     else:
-        corr = returns_window.corr(method="pearson").values
+        corr = returns_window.corr(method="pearson").values.copy()
 
     np.fill_diagonal(corr, 0)
     adj = np.where(corr > threshold, corr, 0)
@@ -137,7 +137,7 @@ def build_sentiment_graph(
     n = len(tickers)
 
     # Sentiment is scalar (market-wide); differentiate by volatility correlation
-    vol_corr = volatility_window.corr(method="spearman").values
+    vol_corr = volatility_window.corr(method="spearman").values.copy()
     np.fill_diagonal(vol_corr, 0)
 
     # Sentiment magnitude (absolute fear level)
@@ -145,7 +145,8 @@ def build_sentiment_graph(
     sent_magnitude = min(sent_magnitude / 10.0, 1.0)  # normalize to [0, 1]
 
     # Sentiment graph: vol corr × sentiment magnitude
-    adj = np.maximum(vol_corr, 0) * sent_magnitude
+    # Use nan_to_num to prevent NaN propagation from missing volatility data
+    adj = np.nan_to_num(np.maximum(vol_corr, 0), nan=0.0) * sent_magnitude
     return adj.astype(np.float32)
 
 
@@ -161,7 +162,7 @@ def build_volatility_spillover_graph(
     Layer 4: Volatility spillover graph.
     w_ij = corr(σ_i, σ_j) — captures cross-stock volatility clustering.
     """
-    corr = volatility_window.corr(method="spearman").values
+    corr = volatility_window.corr(method="spearman").values.copy()
     np.fill_diagonal(corr, 0)
     adj = np.where(corr > threshold, corr, 0)
     return adj.astype(np.float32)
@@ -194,10 +195,12 @@ def build_multilayer_adjacency(
     A_sent = build_sentiment_graph(sentiment_window, tickers, volatility_window)
     A_vol = build_volatility_spillover_graph(volatility_window, corr_threshold)
 
-    A = (weights["alpha"] * A_corr +
-         weights["beta"] * A_sector +
-         weights["gamma"] * A_sent +
-         weights["delta"] * A_vol)
+    # Apply nan_to_num to each layer to ensure missing data in one layer 
+    # doesn't wipe out valid connections in others (like A_sector)
+    A = (weights["alpha"] * np.nan_to_num(A_corr) +
+         weights["beta"]  * np.nan_to_num(A_sector) +
+         weights["gamma"] * np.nan_to_num(A_sent) +
+         weights["delta"] * np.nan_to_num(A_vol))
 
     # Handle NaN values before normalization
     A = np.nan_to_num(A, nan=0.0, posinf=0.0, neginf=0.0)
