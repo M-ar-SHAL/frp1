@@ -275,41 +275,123 @@ with tab3:
                 if adj is not None:
                     st.subheader("Network Fragility Graph")
                     G = nx.from_numpy_array(np.abs(adj))
-                    pos = nx.spring_layout(G, seed=42)
+                    pos = nx.spring_layout(G, dim=3, seed=42)
                     
-                    edge_x, edge_y = [], []
+                    edge_x, edge_y, edge_z = [], [], []
                     for edge in G.edges():
-                        x0, y0 = pos[edge[0]]
-                        x1, y1 = pos[edge[1]]
+                        x0, y0, z0 = pos[edge[0]]
+                        x1, y1, z1 = pos[edge[1]]
                         edge_x.extend([x0, x1, None])
                         edge_y.extend([y0, y1, None])
-                    edge_trace = go.Scatter(x=edge_x, y=edge_y, line=dict(width=0.5, color='#888'), hoverinfo='none', mode='lines')
+                        edge_z.extend([z0, z1, None])
                     
-                    node_x = []
-                    node_y = []
+                    edge_trace = go.Scatter3d(
+                        x=edge_x, y=edge_y, z=edge_z,
+                        line=dict(width=2, color='#888'),
+                        hoverinfo='none',
+                        mode='lines'
+                    )
+                    
+                    node_x, node_y, node_z = [], [], []
                     node_text = []
                     fragilities = fragility_seq[-1].squeeze().detach().numpy()
                     tickers = node_feats['tickers']
+                    
                     for node in G.nodes():
-                        x, y = pos[node]
+                        x, y, z = pos[node]
                         node_x.append(x)
                         node_y.append(y)
-                        tck = tickers[node] if node < len(tickers) else str(node)
-                        node_text.append(f"{tck} | Fragility: {fragilities[node]:.3f}")
+                        node_z.append(z)
                         
-                    node_trace = go.Scatter(
-                        x=node_x, y=node_y, mode='markers', hoverinfo='text', text=node_text,
-                        marker=dict(showscale=True, colorscale='YlOrRd', color=fragilities, size=15, 
-                                    colorbar=dict(thickness=15, title='Fragility', xanchor='left'))
+                        tck = tickers[node] if node < len(tickers) else str(node)
+                        
+                        # Find Most/Least Impacted neighbors (outgoing edges from this node)
+                        row = np.abs(adj[node])
+                        # Mask self-loop
+                        mask = np.ones(len(row), dtype=bool)
+                        mask[node] = False
+                        
+                        # neighbors indices (excluding self)
+                        neighbor_indices = np.where(mask)[0]
+                        neighbor_weights = row[neighbor_indices]
+                        
+                        if len(neighbor_weights) > 0:
+                            # 1. Most Affects
+                            max_idx_local = np.argmax(neighbor_weights)
+                            max_idx = neighbor_indices[max_idx_local]
+                            max_val = neighbor_weights[max_idx_local]
+                            max_tck = tickers[max_idx] if max_idx < len(tickers) else str(max_idx)
+                            
+                            # 2. Least Affects (minimum of the rest after excluding most affected)
+                            mask_least = np.ones(len(neighbor_weights), dtype=bool)
+                            mask_least[max_idx_local] = False
+                            
+                            rem_indices = neighbor_indices[mask_least]
+                            rem_weights = neighbor_weights[mask_least]
+                            
+                            if len(rem_weights) > 0:
+                                # Prioritize lowest non-zero to provide informative labels
+                                nz_mask = rem_weights > 1e-7
+                                if np.any(nz_mask):
+                                    nz_indices = rem_indices[nz_mask]
+                                    nz_weights = rem_weights[nz_mask]
+                                    min_idx_rem = np.argmin(nz_weights)
+                                    min_idx = nz_indices[min_idx_rem]
+                                    min_val = nz_weights[min_idx_rem]
+                                else:
+                                    # Fallback to absolute minimum if all are zero
+                                    min_idx_rem = np.argmin(rem_weights)
+                                    min_idx = rem_indices[min_idx_rem]
+                                    min_val = rem_weights[min_idx_rem]
+                                    
+                                min_tck = tickers[min_idx] if min_idx < len(tickers) else str(min_idx)
+                                
+                                hover_info = (
+                                    f"<b>{tck}</b><br>"
+                                    f"Fragility Score: {fragilities[node]:.4f}<br>"
+                                    f"───────────────────<br>"
+                                    f"Most Affects: {max_tck} ({max_val:.4f})<br>"
+                                    f"Least Affects: {min_tck} ({min_val:.4f})"
+                                )
+                            else:
+                                hover_info = (
+                                    f"<b>{tck}</b><br>"
+                                    f"Fragility Score: {fragilities[node]:.4f}<br>"
+                                    f"Most Affects: {max_tck} ({max_val:.4f})"
+                                )
+                        else:
+                            hover_info = f"<b>{tck}</b><br>Fragility: {fragilities[node]:.4f}"
+                            
+                        node_text.append(hover_info)
+                        
+                    node_trace = go.Scatter3d(
+                        x=node_x, y=node_y, z=node_z,
+                        mode='markers',
+                        hoverinfo='text',
+                        text=node_text,
+                        marker=dict(
+                            showscale=True,
+                            colorscale='YlOrRd',
+                            color=fragilities,
+                            size=8,
+                            line=dict(width=1, color='#222'),
+                            colorbar=dict(thickness=15, title='Fragility', xanchor='left')
+                        )
                     )
                     
-                    fig_net = go.Figure(data=[edge_trace, node_trace],
-                                        layout=go.Layout(showlegend=False, hovermode='closest', margin=dict(b=0,l=0,r=0,t=0),
-                                        template='plotly_dark',
-                                        plot_bgcolor='rgba(0,0,0,0)',
-                                        paper_bgcolor='rgba(0,0,0,0)',
-                                        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False),
-                                        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)))
+                    fig_net = go.Figure(data=[edge_trace, node_trace])
+                    fig_net.update_layout(
+                        showlegend=False,
+                        hovermode='closest',
+                        margin=dict(b=0, l=0, r=0, t=0),
+                        template='plotly_dark',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        scene=dict(
+                            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, title=''),
+                            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, title=''),
+                            zaxis=dict(showgrid=False, zeroline=False, showticklabels=False, title='')
+                        )
+                    )
                     st.plotly_chart(fig_net, use_container_width=True)
 
                 st.subheader("Energy Landscape Transition")
