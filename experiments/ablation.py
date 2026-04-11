@@ -1,28 +1,3 @@
-"""
-FAPT-GNN Ablation Study Runner
-
-Generates Table 2 of the paper:
-  "Ablation analysis of FAPT-GNN components on NIFTY 50 (2015–2024)"
-
-Variants tested:
-  ┌────────────────────────────────────────────────────────────────┐
-  │ ID  │ Model                     │ What's removed              │
-  ├─────┼───────────────────────────┼─────────────────────────────┤
-  │  1  │ MLP                       │ Graph + Temporal            │
-  │  2  │ LSTM                      │ Graph                       │
-  │  3  │ GNN-Only                  │ Temporal + Energy           │
-  │  4  │ GNN-LSTM                  │ Fragility + Energy          │
-  │  5  │ FAPT-GNN w/o Fragility    │ Fragility Encoder disabled  │
-  │  6  │ FAPT-GNN w/o Energy       │ Energy Layer bypassed       │
-  │  7  │ FAPT-GNN Corr-Only Graph  │ Multi-layer → single-layer  │
-  │  8  │ FAPT-GNN FULL (proposed)  │ Nothing (full model)        │
-  └─────┴───────────────────────────┴─────────────────────────────┘
-
-Usage:
-  python experiments/ablation.py
-  python experiments/ablation.py --config experiments/config.yaml --epochs 20
-"""
-
 import os
 import sys
 import json
@@ -53,29 +28,21 @@ from training.trainer import (
 from training.evaluate import Evaluator, print_evaluation_report
 import yaml
 
-
 # ─────────────────────────────────────────────────────────────────
-# ABLATION VARIANT BUILDERS
 # ─────────────────────────────────────────────────────────────────
 
 class FAPT_GNN_NoFragility(FAPT_GNN):
-    """
-    Ablation B5: FAPT-GNN without Fragility Encoder.
-    The GNN uses uniform attention (F_i = 0.5 for all nodes).
-    Tests whether the fragility-aware attention matters.
-    """
+    
     def process_single_graph(self, graph):
         x = graph.x
         edge_index = graph.edge_index
         edge_attr = graph.edge_attr
 
-        # ❌ No fragility encoder → uniform fragility
         N = x.size(0)
-        F_raw = torch.full((N,), 0.5, device=x.device)   # uniform prior
+        F_raw = torch.full((N,), 0.5, device=x.device)
 
         h_gnn = self.gnn(x, edge_index, F_raw, edge_attr)
 
-        # Still refine with GNN (but no fragility encoder)
         _, F = self.fragility_encoder(x, h_gnn)
         h_graph = self.graph_pool_proj(h_gnn.mean(dim=0))
 
@@ -90,13 +57,8 @@ class FAPT_GNN_NoFragility(FAPT_GNN):
 
         return F, h_graph, E
 
-
 class FAPT_GNN_NoEnergy(FAPT_GNN):
-    """
-    Ablation B6: FAPT-GNN without Energy Layer.
-    Replaces E(t) with a constant zero signal.
-    Tests whether the energy-based modeling contributes.
-    """
+    
     def process_single_graph(self, graph):
         x = graph.x
         edge_index = graph.edge_index
@@ -106,31 +68,18 @@ class FAPT_GNN_NoEnergy(FAPT_GNN):
         _, F = self.fragility_encoder(x, h_gnn)
         h_graph = self.graph_pool_proj(h_gnn.mean(dim=0))
 
-        # ❌ No energy computation → constant zero energy
         E = torch.tensor(0.0, device=x.device)
         return F, h_graph, E
 
-
 class FAPT_GNN_CorrOnlyGraph(FAPT_GNN):
-    """
-    Ablation B7: FAPT-GNN with correlation-only graph (single-layer).
-    Rebuilds edge weights from just the correlation layer,
-    ignoring sector/sentiment/volatility layers.
-    Tests whether multi-layer graph construction matters.
-    """
-    pass    # The model is the same; we modify the DATA (graphs) at dataset build time
-
+    
+    pass
 
 def build_correlation_only_graphs(graphs):
-    """
-    Convert multi-layer graphs to correlation-only by zeroing out
-    non-correlation edges (keeping only top-weight edges as proxy).
-    This simulates a single-layer correlation-only graph.
-    """
+    
     from torch_geometric.data import Data
     new_graphs = []
     for g in graphs:
-        # Use only the top-50% edges by weight as "correlation-only"
         edge_attr = g.edge_attr
         if edge_attr is not None:
             weights = edge_attr.squeeze(-1)
@@ -149,7 +98,6 @@ def build_correlation_only_graphs(graphs):
             num_nodes=g.num_nodes
         )
         if hasattr(g, 'adj'):
-            # Binarize adj (correlation-only approximation)
             adj = g.adj.clone()
             adj_mean = adj.mean()
             adj = torch.where(adj >= adj_mean, adj, torch.zeros_like(adj))
@@ -160,13 +108,11 @@ def build_correlation_only_graphs(graphs):
         new_graphs.append(new_g)
     return new_graphs
 
-
 # ─────────────────────────────────────────────────────────────────
-# SIMPLE LOSS FOR BASELINES (no energy/fragility terms)
 # ─────────────────────────────────────────────────────────────────
 
 class SimpleCrashLoss(torch.nn.Module):
-    """BCE loss only — for baseline models that don't output fragility/energy."""
+    
     def __init__(self, pos_weight: float = 9.0, use_focal: bool = True):
         super().__init__()
         from training.losses import CrashClassificationLoss
@@ -182,15 +128,11 @@ class SimpleCrashLoss(torch.nn.Module):
         }
         return L_cls, loss_dict
 
-
 # ─────────────────────────────────────────────────────────────────
-# VARIANT REGISTRY
 # ─────────────────────────────────────────────────────────────────
 
 def get_ablation_variants(config: dict, pos_weight: float, graphs_full, graphs_corr_only):
-    """
-    Returns list of (name, model, criterion, graphs_to_use) tuples.
-    """
+    
     model_cfg = config["model"]
     loss_cfg = config["loss"]
 
@@ -289,7 +231,7 @@ def get_ablation_variants(config: dict, pos_weight: float, graphs_full, graphs_c
             "name": "B7: FAPT-GNN Corr-Only Graph",
             "model": build_model(model_cfg),
             "criterion": full_criterion,
-            "graphs": graphs_corr_only,  # uses single-layer graph
+            "graphs": graphs_corr_only,
             "description": "Full model on correlation-only (single-layer) graph",
         },
         {
@@ -302,13 +244,11 @@ def get_ablation_variants(config: dict, pos_weight: float, graphs_full, graphs_c
     ]
     return variants
 
-
 # ─────────────────────────────────────────────────────────────────
-# TRAIN & EVALUATE ONE VARIANT
 # ─────────────────────────────────────────────────────────────────
 
 def run_variant(variant: dict, labels, energy_proxy, config: dict, device: str) -> dict:
-    """Train and evaluate a single ablation variant. Returns metrics dict."""
+    
     name = variant["name"]
     model = variant["model"]
     criterion = variant["criterion"]
@@ -320,7 +260,6 @@ def run_variant(variant: dict, labels, energy_proxy, config: dict, device: str) 
     print(f"  ({variant['description']})")
     print(f"{'─'*60}")
 
-    # Build dataset
     dataset = build_sliding_window_dataset(
         graph_sequence=graphs,
         labels=labels,
@@ -338,7 +277,6 @@ def run_variant(variant: dict, labels, energy_proxy, config: dict, device: str) 
         print(f"  [Skip] Insufficient data for {name}")
         return {}
 
-    # Shorten epochs for ablation (speed)
     ablation_config = copy.deepcopy(train_cfg)
     ablation_config["epochs"] = train_cfg.get("ablation_epochs",
                                                min(train_cfg.get("epochs", 50), 30))
@@ -358,7 +296,6 @@ def run_variant(variant: dict, labels, energy_proxy, config: dict, device: str) 
         ),
     )
 
-    # Evaluate on test set
     test_evaluator = Evaluator()
     test_losses, test_results = eval_epoch(model, test_ds, criterion, device, test_evaluator)
     elapsed = time.time() - t0
@@ -388,13 +325,11 @@ def run_variant(variant: dict, labels, energy_proxy, config: dict, device: str) 
           f"F1={metrics['f1_score']:.4f} | EWS@10={ews.get('EWS@10', 0):.4f}")
     return result
 
-
 # ─────────────────────────────────────────────────────────────────
-# RESULTS TABLE PRINTER
 # ─────────────────────────────────────────────────────────────────
 
 def print_ablation_table(results: list):
-    """Print a LaTeX-style ablation table for the paper."""
+    
     print(f"\n\n{'='*90}")
     print("  ABLATION STUDY RESULTS — Table 2 (FAPT-GNN vs Baselines, NIFTY 50)")
     print(f"{'='*90}")
@@ -414,7 +349,6 @@ def print_ablation_table(results: list):
               f"{r.get('num_params', 0):>10,}{marker}")
     print(f"{'='*90}\n")
 
-    # LaTeX snippet for paper
     print("📄 LaTeX Table Snippet:")
     print("\\begin{tabular}{lcccccc}")
     print("\\hline")
@@ -437,16 +371,11 @@ def print_ablation_table(results: list):
     print("\\hline")
     print("\\end{tabular}")
 
-
 # ─────────────────────────────────────────────────────────────────
-# INCREMENT ANALYSIS: which component adds most value
 # ─────────────────────────────────────────────────────────────────
 
 def print_increment_analysis(results: list):
-    """
-    Show how much each component contributes to AUC-ROC.
-    This is the 'contribution analysis' for Section 5 of the paper.
-    """
+    
     lookup = {r["name"]: r for r in results if r}
 
     full_auc = lookup.get("B8: FAPT-GNN FULL (Proposed)", {}).get("auc_roc", 0)
@@ -469,9 +398,7 @@ def print_increment_analysis(results: list):
         prev_auc = auc
     print()
 
-
 # ─────────────────────────────────────────────────────────────────
-# MAIN RUNNER
 # ─────────────────────────────────────────────────────────────────
 
 def run_ablation(config: dict, fast: bool = False):
@@ -484,7 +411,6 @@ def run_ablation(config: dict, fast: bool = False):
     os.makedirs(config["output"]["results_dir"], exist_ok=True)
     os.makedirs(config["output"]["checkpoint_dir"], exist_ok=True)
 
-    # ── STEP 1: Load Data (same for all variants) ──
     print("📊 Loading data (shared across all ablations)...")
     data = load_all_data(
         start=config["data"]["start_date"],
@@ -507,7 +433,6 @@ def run_ablation(config: dict, fast: bool = False):
     )
     node_feature_dict = build_node_feature_matrix(features)
 
-    # ── STEP 2: Build Full Multi-Layer Graphs ──
     print("\n🕸️  Building multi-layer graphs...")
     graphs_full, graph_dates = build_graph_sequence(
         node_features_dict=node_feature_dict,
@@ -516,11 +441,9 @@ def run_ablation(config: dict, fast: bool = False):
         window=config["graph"]["graph_window"],
     )
 
-    # ── STEP 3: Build Correlation-Only Graphs (for B7) ──
     print("🕸️  Building correlation-only graphs (for B7 ablation)...")
     graphs_corr_only = build_correlation_only_graphs(graphs_full)
 
-    # ── STEP 4: Labels ──
     print("\n🏷️  Creating crash labels...")
     returns = features["returns"]
     nifty_aligned = data["nifty"].reindex(returns.index).ffill().bfill()
@@ -535,14 +458,11 @@ def run_ablation(config: dict, fast: bool = False):
     )
     vix_proxy = data["vix"].reindex(returns.index).ffill().bfill()
 
-    # ── STEP 5: Compute pos_weight from full dataset proxy ──
-    # Quick estimate from labels
     crashes = labels["crash_label"].sum()
     normals = len(labels) - crashes
     pos_weight = float(normals / crashes) if crashes > 0 else 9.0
     print(f"\n[Ablation] Class imbalance weight: {pos_weight:.2f}x")
 
-    # ── STEP 6: Get all variants ──
     if fast:
         config["training"]["ablation_epochs"] = 5
         config["training"]["patience"] = 3
@@ -550,7 +470,6 @@ def run_ablation(config: dict, fast: bool = False):
 
     variants = get_ablation_variants(config, pos_weight, graphs_full, graphs_corr_only)
 
-    # ── STEP 7: Run each variant ──
     all_results = []
     for variant in variants:
         try:
@@ -568,23 +487,19 @@ def run_ablation(config: dict, fast: bool = False):
                 "error": str(e),
             })
 
-    # ── STEP 8: Print results ──
     print_ablation_table(all_results)
     print_increment_analysis(all_results)
 
-    # ── STEP 9: Save results ──
     results_path = os.path.join(config["output"]["results_dir"], "ablation_results.json")
     with open(results_path, "w") as f:
         json.dump(all_results, f, indent=2)
     print(f"💾 Ablation results saved to {results_path}")
 
-    # Save as CSV for Excel / paper tables
     csv_path = os.path.join(config["output"]["results_dir"], "ablation_results.csv")
     pd.DataFrame(all_results).to_csv(csv_path, index=False)
     print(f"📊 CSV saved to {csv_path}")
 
     return all_results
-
 
 def main():
     parser = argparse.ArgumentParser(description="FAPT-GNN Ablation Study")
@@ -604,6 +519,6 @@ def main():
 
     run_ablation(config, fast=args.fast)
 
-
 if __name__ == "__main__":
     main()
+

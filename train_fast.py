@@ -1,20 +1,9 @@
-"""
-Fast Training Script for FAPT-GNN
-Uses optimized configuration for quick experimentation.
-
-Usage:
-    python train_fast.py
-
-Expected time: ~2-3 minutes for 10 epochs (vs 30+ minutes with default config)
-"""
-
 import os
 import yaml
 import torch
 import time
 from pathlib import Path
 
-# Load FAST config instead of default
 CONFIG_PATH = "experiments/config_fast.yaml"
 
 print("\n" + "="*80)
@@ -29,7 +18,6 @@ start_time = time.time()
 with open(CONFIG_PATH, "r") as f:
     config = yaml.safe_load(f)
 
-# Data loading
 print("[1] Loading data (2020-2026)...")
 from data.data_pipeline import load_all_data
 from data.feature_engineering import build_all_features, build_node_feature_matrix
@@ -38,7 +26,6 @@ from data.graph_builder import build_graph_sequence
 
 data = load_all_data(start=config['data']['start_date'])
 
-# Feature engineering
 print("[2] Building features (optimized windows)...")
 sent = __import__('pandas').Series(
     0.0, 
@@ -50,7 +37,6 @@ feats = build_all_features(
     **config['features']
 )
 
-# Labels
 print("[3] Creating crash labels...")
 from data.feature_engineering import compute_returns
 returns = compute_returns(data["prices"])
@@ -62,7 +48,6 @@ labels = create_labels(
     dd_window=config['labels']['dd_window']
 )
 
-# Graph sequence
 print("[4] Building graph sequence (fast)...")
 node_feats = build_node_feature_matrix(feats)
 graph_sequence, _ = build_graph_sequence(
@@ -70,13 +55,12 @@ graph_sequence, _ = build_graph_sequence(
     window=config['graph']['graph_window']
 )
 
-# Dataset
 print("[5] Building dataset with stride=5...")
 from training.trainer import build_sliding_window_dataset, walk_forward_split
 dataset = build_sliding_window_dataset(
     graph_sequence, labels, data['vix'],
     seq_len=config['model']['seq_len'],
-    stride=config['training']['stride']  # stride=5 means 5x fewer samples
+    stride=config['training']['stride']
 )
 train_ds, val_ds, test_ds = walk_forward_split(dataset)
 print(f"    Train size: {len(train_ds)} | Val size: {len(val_ds)} | Test size: {len(test_ds)}")
@@ -84,8 +68,6 @@ train_pos = sum(d['crash_label'].item() for d in train_ds)
 val_pos = sum(d['crash_label'].item() for d in val_ds)
 print(f"    Train Pos: {train_pos} | Val Pos: {val_pos}")
 
-
-# Model setup
 print("[6] Initializing fast model...")
 from models.fapt_gnn import FAPT_GNN
 from training.losses import FAPTGNNLoss
@@ -104,7 +86,6 @@ print(f"    Parameters: {sum(p.numel() for p in model.parameters() if p.requires
 pos_weight = compute_pos_weight(train_ds)
 criterion = FAPTGNNLoss(pos_weight=pos_weight, **config['loss'])
 
-# Training
 print("\n[7] TRAINING...\n")
 optimizer = torch.optim.Adam(
     model.parameters(),
@@ -138,7 +119,6 @@ print(f"Total training time: {elapsed//60:.0f}m {elapsed%60:.0f}s")
 print(f"Average per epoch: {elapsed/config['training']['epochs']:.1f}s")
 print(f"{'='*80}\n")
 
-# Save checkpoint
 os.makedirs("experiments/checkpoints", exist_ok=True)
 torch.save({
     'epoch': config['training']['epochs'],
@@ -150,3 +130,4 @@ torch.save({
 
 print("[8] Model saved to experiments/checkpoints/best_model.pt")
 print("\nFast training complete! Use dashboard or test_gnn_fix.py to test predictions.\n")
+

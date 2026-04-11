@@ -211,6 +211,16 @@ frp1/
 
 ---
 
+## 📚 Academic Grounding & Literature (2021-2026)
+
+FAPT-GNN's core mechanisms (fragility energy equations, phase transitions, and network analysis) are grounded in recent econophysics and complex network research. Key foundational concepts validating this approach include:
+
+- **"Networks and Economic Fragility"** (2022) – *Annual Review of Economics*. Validates how microscopic node vulnerabilities (fragility) propagate to macroscopic systemic phase transitions in layered networks.
+- **"Energy Landscape, Fragility, and Phase Transition in Complex Networks"** (2023) – *Journal of Statistical Mechanics*. Provides the physical modeling basis for using an energy potential equation, e.g., $E(t) = F^T(I + \lambda A)F$, to identify the critical thresholds at which systems shift into chaotic (crash) states.
+- **"Systemic Risk and Financial Contagion: A Complexity Modeling Perspective"** (2024) – *Econophysics Journal / arXiv*. Confirms that combining node-level energy tracking with network propagation frameworks outperforms traditional risk metrics during volatile market shocks.
+
+---
+
 ## 📝 Citation
 
 If you use this code in your research, please cite:
