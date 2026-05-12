@@ -54,11 +54,30 @@ def load_config():
 
 config = load_config()
 
-# Setup Sidebar
 st.sidebar.title("System Configuration")
 st.sidebar.markdown("### Data Settings")
 start_date = st.sidebar.date_input("Start Date", pd.to_datetime(config['data']['start_date']))
 use_gdelt = st.sidebar.checkbox("Use GDELT Sentiment", value=config['data']['use_gdelt'])
+
+if use_gdelt:
+    st.sidebar.info("🚀 GDELT News-Driven Sentiment Active")
+else:
+    st.sidebar.warning("📉 VIX Proxy Sentiment Active")
+
+# ── Cache buster ──────────────────────────────────────────────────────────────
+# Keeps a version counter in session state; incrementing it changes the cache
+# key of get_data() so Streamlit is forced to re-run the function.
+if "cache_version" not in st.session_state:
+    st.session_state["cache_version"] = 0
+
+if st.sidebar.button("🗑️ Clear Sentiment Cache & Refresh"):
+    import os
+    parquet = "data/cache/gdelt_sentiment.parquet"
+    if os.path.exists(parquet):
+        os.remove(parquet)
+        st.sidebar.success("Parquet cache deleted.")
+    st.session_state["cache_version"] += 1
+    st.rerun()
 
 st.sidebar.markdown("### Crash Definition")
 crash_percentile = st.sidebar.slider("Crash Percentile Threshold", min_value=1.0, max_value=15.0, value=config['labels']['percentile'], step=0.5)
@@ -87,7 +106,16 @@ This dashboard answers the FAPT-GNN review:
 # 1. DATA PREPARATION (CACHED)
 # ---------------------------------------------------------
 @st.cache_data(show_spinner=False)
-def get_data(start_d, gdelt, cp, dt):
+def get_data(start_d, gdelt, cp, dt, _cache_version=0):
+    """
+    _cache_version is a bust token — incrementing it via session_state forces
+    Streamlit to re-run this function even when all other args are unchanged.
+    The leading underscore tells @st.cache_data NOT to hash this argument
+    (it is already part of the function signature for keying purposes).
+    """
+    from data.gdelt_sentiment import load_or_build_sentiment
+    from data.feature_engineering import build_node_feature_matrix
+
     d = load_all_data(start=str(start_d))
     nifty = d["nifty"]
     from data.feature_engineering import compute_returns
@@ -95,16 +123,25 @@ def get_data(start_d, gdelt, cp, dt):
     labels = create_labels(
         nifty,
         returns,
-        percentile=cp, 
-        drawdown_threshold=dt, 
-        forward_days=config['labels']['forward_days'], 
+        percentile=cp,
+        drawdown_threshold=dt,
+        forward_days=config['labels']['forward_days'],
         dd_window=config['labels']['dd_window']
     )
-    return d, labels
+
+    # Integrate Sentiment & Feature Engineering
+    sent = load_or_build_sentiment(d["prices"].index, d["vix"], use_gdelt=gdelt)
+    feats = build_all_features(d["prices"], d["vix"], d["macro"], sent, **config['features'])
+    node_feats = build_node_feature_matrix(feats)
+
+    return d, labels, sent, node_feats, feats
 
 with st.spinner("Fetching Real-Time Market Data & Building Features (10+ Yr Horizon)..."):
     try:
-        data, labels = get_data(start_date, use_gdelt, crash_percentile, drawdown_threshold)
+        data, labels, data_sent, node_features, features_raw = get_data(
+            start_date, use_gdelt, crash_percentile, drawdown_threshold,
+            _cache_version=st.session_state["cache_version"]
+        )
         st.success(f"Data Loaded: {len(data['nifty'])} Trading Days | {start_date} to {data['nifty'].index[-1].date()}")
     except Exception as e:
         import traceback
@@ -152,6 +189,79 @@ with tab1:
     fig.update_yaxes(title_text="Volatility (VIX)", secondary_y=True, showgrid=False)
     st.plotly_chart(fig, use_container_width=True)
 
+    # ── Sentiment Analytics ──────────────────────────────────────────────────
+    st.subheader("Sentiment Analytics")
+    sent_raw = data_sent['sentiment_raw'].copy()
+    sent_fig = go.Figure()
+
+    if use_gdelt:
+        # GDELT mode: zoom to last 2 years where real news tone data exists.
+        # GDELT tone oscillates +/- around 0 (bullish vs fearful news).
+        # This is visually completely different from the monotone VIX proxy.
+        cutoff = sent_raw.index[-1] - pd.DateOffset(years=2)
+        gdelt_slice = sent_raw[sent_raw.index >= cutoff]
+        gdelt_days = int(gdelt_slice.notna().sum())
+
+        if gdelt_days > 10:
+            st.info(
+                f"📡 **GDELT mode — last 2 years of real news sentiment** "
+                f"({gdelt_days:,} trading days with live news tone data). "
+                f"Toggle off to see the full-history VIX fear proxy."
+            )
+        else:
+            st.warning(
+                "⚠️ GDELT returned no data yet. "
+                "Click **'🗑️ Clear Sentiment Cache & Refresh'** in the sidebar to fetch it."
+            )
+
+        sent_fig.add_hline(
+            y=0, line_dash="dash",
+            line_color="rgba(255,255,255,0.3)",
+            annotation_text="Neutral",
+            annotation_position="bottom right"
+        )
+        sent_fig.add_trace(go.Scatter(
+            x=gdelt_slice.index, y=gdelt_slice.values,
+            name="GDELT News Tone (raw)",
+            line=dict(color='#00e5ff', width=2),
+            fill='tozeroy', fillcolor='rgba(0,229,255,0.12)'
+        ))
+        sent_fig.update_layout(
+            title="Sentiment Engine: GDELT News Tone — Last 2 Years",
+            xaxis_title="Date",
+            yaxis_title="GDELT Tone Score (+ve=bullish, -ve=fearful)",
+            template='plotly_dark',
+            height=350,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=False),
+        )
+    else:
+        # VIX mode: full history, normalised -1 (extreme fear) to +1 (calm).
+        st.info("📉 **VIX Proxy mode — full history.** Toggle on GDELT to see real news sentiment.")
+        s_min, s_max = sent_raw.min(), sent_raw.max()
+        sent_norm = 2 * (sent_raw - s_min) / (s_max - s_min) - 1 if s_max != s_min else sent_raw * 0
+        sent_fig.add_trace(go.Scatter(
+            x=sent_norm.index, y=sent_norm.values,
+            name="VIX Fear Proxy (normalised)",
+            line=dict(color='#ff9100', width=2),
+            fill='tozeroy', fillcolor='rgba(255,145,0,0.10)'
+        ))
+        sent_fig.update_layout(
+            title="Sentiment Engine: India VIX Fear Proxy — Full History",
+            xaxis_title="Date",
+            yaxis_title="Fear Score (normalised, -1=extreme fear, +1=calm)",
+            template='plotly_dark',
+            height=350,
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)',
+            xaxis=dict(showgrid=False),
+            yaxis=dict(showgrid=False, range=[-1.1, 1.1]),
+        )
+
+    st.plotly_chart(sent_fig, use_container_width=True)
+
 with tab2:
     st.header("Model Pipeline & State")
     st.write(f"Looking for pre-trained model checkpoint in `{CHECKPOINT_PATH}` ...")
@@ -166,12 +276,8 @@ with tab2:
 
     if st.button("Train Real-Time FAPT-GNN (Resource Intensive)"):
         with st.spinner("Building Graph Sequences and Triggering Walk-Forward Pipeline..."):
-            from data.gdelt_sentiment import load_or_build_sentiment
-            from data.feature_engineering import build_node_feature_matrix
-            sent = load_or_build_sentiment(data["prices"].index, data["vix"], use_gdelt=use_gdelt)
-            feats = build_all_features(data["prices"], data["vix"], data["macro"], sent, **config['features'])
-            node_feats = build_node_feature_matrix(feats)
-            graph_sequence, _ = build_graph_sequence(node_feats, feats, sent, window=config['graph']['graph_window'])
+            # Use cached node_features and features_raw
+            graph_sequence, _ = build_graph_sequence(node_features, features_raw, data_sent, window=config['graph']['graph_window'])
             
             dataset = build_sliding_window_dataset(
                 graph_sequence, labels, data['vix'], 
@@ -225,14 +331,10 @@ with tab3:
         
         with st.spinner("Extracting recent dynamics and executing graph traversal..."):
             try:
-                from data.gdelt_sentiment import load_or_build_sentiment
-                from data.feature_engineering import build_node_feature_matrix
                 import networkx as nx
                 
-                sent = load_or_build_sentiment(data["prices"].index, data["vix"], use_gdelt=use_gdelt)
-                feats = build_all_features(data["prices"], data["vix"], data["macro"], sent, **config['features'])
-                node_feats = build_node_feature_matrix(feats)
-                graph_sequence, _ = build_graph_sequence(node_feats, feats, sent, window=config['graph']['graph_window'])
+                # Use cached node_features and features_raw
+                graph_sequence, _ = build_graph_sequence(node_features, features_raw, data_sent, window=config['graph']['graph_window'])
                 
                 # TIME TRAVEL SLIDER
                 min_idx = config['model']['seq_len']
@@ -271,7 +373,7 @@ with tab3:
 
                 # NETWORK VISUALIZATION
                 target_graph = latest_seq[-1]
-                adj = target_graph.adj.numpy() if hasattr(target_graph, 'adj') else None
+                adj = target_graph.adj.cpu().numpy() if hasattr(target_graph, 'adj') else None
                 if adj is not None:
                     st.subheader("Network Fragility Graph")
                     G = nx.from_numpy_array(np.abs(adj))
@@ -294,8 +396,8 @@ with tab3:
                     
                     node_x, node_y, node_z = [], [], []
                     node_text = []
-                    fragilities = fragility_seq[-1].squeeze().detach().numpy()
-                    tickers = node_feats['tickers']
+                    fragilities = fragility_seq[-1].cpu().squeeze().detach().numpy()
+                    tickers = node_features['tickers']
                     
                     for node in G.nodes():
                         x, y, z = pos[node]
@@ -395,7 +497,7 @@ with tab3:
                     st.plotly_chart(fig_net, use_container_width=True)
 
                 st.subheader("Energy Landscape Transition")
-                energy_tensor = torch.cat([e.unsqueeze(0) for e in energy_seq]).squeeze().numpy()
+                energy_tensor = torch.cat([e.unsqueeze(0) for e in energy_seq]).squeeze().cpu().numpy()
                 dates_seq = [g.date.date() for g in latest_seq]
                 
                 fig_energy = go.Figure()
