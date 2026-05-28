@@ -102,7 +102,7 @@ def build_sentiment_series(
     print(f"[Sentiment] Saved to {cache_path}")
     return result
 
-        time.sleep(sleep_sec)
+        # time.sleep(sleep_sec)
 
 def build_sentiment_series(
     start: str = "2015-01-01",
