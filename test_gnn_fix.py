@@ -1,11 +1,7 @@
-"""
-Quick test to verify the GNN fix works without PyG code generation errors.
-"""
 import sys
 import torch
 from torch_geometric.data import Data
 
-# Add project to path
 sys.path.insert(0, '.')
 
 print("[Test] Importing GNN modules...")
@@ -64,8 +60,7 @@ print("\n[Test] Testing with graph sequence (FAPT integration)...")
 try:
     from models.fapt_gnn import FAPT_GNN
     
-    # Create dummy graph sequence
-    T = 30  # Time steps
+    T = 30
     graph_seq = []
     for t in range(T):
         g = Data(x=torch.randn(N, d), edge_index=edge_index, edge_attr=edge_attr)
@@ -91,3 +86,4 @@ except Exception as e:
 print("\n" + "="*60)
 print("[PASS] All tests passed! GNN fix is working correctly.")
 print("="*60)
+

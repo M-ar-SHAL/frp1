@@ -1,14 +1,3 @@
-"""
-Training Loop for FAPT-GNN
-
-Features:
-  - Sliding window dataset builder
-  - Train/validation/test split (walk-forward — NO data leakage)
-  - Mixed precision training (torch.cuda.amp)
-  - Early stopping with best model checkpointing
-  - Loss component logging per epoch
-"""
-
 import os
 import time
 import torch
@@ -20,42 +9,29 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-
 def build_sliding_window_dataset(
     graph_sequence: List[Data],
-    labels: "pd.DataFrame",           # from crash_labeler.create_labels()
-    energy_proxy: "pd.Series",        # India VIX or variance proxy
+    labels: "pd.DataFrame",
+    energy_proxy: "pd.Series",
     seq_len: int = 30,
     stride: int = 1,
 ) -> List[Dict]:
-    """
-    Build dataset of (graph_window, labels) samples using sliding window.
-
-    Each sample:
-      - 'graphs'        : list of seq_len PyG Data objects
-      - 'crash_label'   : binary (0/1)
-      - 'time_to_crash' : τ_t in days
-      - 'energy_proxy'  : VIX sequence for energy regularization
-
-    Walk-forward: we do NOT shuffle to prevent temporal data leakage.
-    """
+    
     dataset = []
     T = len(graph_sequence)
 
-    # Align labels to graph dates
     graph_dates = [g.date for g in graph_sequence]
     labels_aligned = labels.reindex(graph_dates).ffill().bfill().fillna(0)
     proxy_aligned = energy_proxy.reindex(graph_dates).ffill().bfill().fillna(0)
 
     for i in range(0, T - seq_len, stride):
         window_graphs = graph_sequence[i: i + seq_len]
-        label_date_idx = i + seq_len - 1  # predict at last date in window
+        label_date_idx = i + seq_len - 1
 
         crash_label = labels_aligned["crash_label"].iloc[label_date_idx]
         tte = labels_aligned["time_to_crash"].iloc[label_date_idx]
         energy_proxy_window = proxy_aligned.iloc[i: i + seq_len].values
 
-        # Last adjacency (for smoothness loss)
         adj = window_graphs[-1].adj if hasattr(window_graphs[-1], 'adj') else None
 
         dataset.append({
@@ -74,12 +50,8 @@ def build_sliding_window_dataset(
     print(f"[Dataset] {len(dataset)} samples | Crashes: {crash_count} ({crash_pct:.1f}%)")
     return dataset
 
-
 def walk_forward_split(dataset: List[Dict], train_ratio: float = 0.7, val_ratio: float = 0.15):
-    """
-    Walk-forward split: maintain temporal order.
-    train → val → test (NO shuffling).
-    """
+    
     n = len(dataset)
     train_end = int(n * train_ratio)
     val_end = int(n * (train_ratio + val_ratio))
@@ -91,29 +63,26 @@ def walk_forward_split(dataset: List[Dict], train_ratio: float = 0.7, val_ratio:
     print(f"[Split] Train: {len(train)} | Val: {len(val)} | Test: {len(test)}")
     return train, val, test
 
-
 def compute_pos_weight(dataset: List[Dict]) -> float:
-    """Compute class imbalance weight for focal loss."""
+    
     crashes = sum(int(d["crash_label"].item()) for d in dataset)
     normals = len(dataset) - crashes
     if crashes == 0:
         return 1.0
-    # Use sqrt of ratio to avoid over-weighting and eventual model collapse
     ratio = normals / crashes
     return np.sqrt(ratio)
-
 
 def train_epoch(
     model,
     dataset: List[Dict],
     criterion,
     optimizer,
-    scaler,         # GradScaler for AMP
+    scaler,
     device: str,
     evaluator,
     max_grad_norm: float = 1.0,
 ) -> Dict:
-    """Run one training epoch."""
+    
     model.train()
     total_losses = {}
 
@@ -149,7 +118,6 @@ def train_epoch(
         scaler.step(optimizer)
         scaler.update()
 
-        # Accumulate
         for k, v in loss_dict.items():
             total_losses[k] = total_losses.get(k, 0) + v
 
@@ -157,14 +125,12 @@ def train_epoch(
                           tte_pred.detach(), tte_true.detach(),
                           energy_seq[-1].item())
 
-    # Average losses
     n = len(dataset)
     return {k: round(v / n, 5) for k, v in total_losses.items()}
 
-
 @torch.no_grad()
 def eval_epoch(model, dataset: List[Dict], criterion, device: str, evaluator) -> Tuple[Dict, Dict]:
-    """Evaluate on val/test dataset."""
+    
     model.eval()
     total_losses = {}
 
@@ -203,7 +169,6 @@ def eval_epoch(model, dataset: List[Dict], criterion, device: str, evaluator) ->
     eval_results = evaluator.compute()
     return avg_losses, eval_results
 
-
 def train(
     model,
     train_dataset: List[Dict],
@@ -214,11 +179,7 @@ def train(
     checkpoint_dir: str = "experiments/checkpoints",
     epoch_callback = None,
 ) -> Dict:
-    """
-    Full training loop with early stopping and best model saving.
-
-    Returns dict with training history and best val metrics.
-    """
+    
     from training.evaluate import Evaluator
 
     os.makedirs(checkpoint_dir, exist_ok=True)
@@ -248,10 +209,6 @@ def train(
     for epoch in range(1, epochs + 1):
         t0 = time.time()
 
-        # NOTE: We do NOT shuffle train_dataset.
-        # This is a walk-forward temporal split — shuffling would violate
-        # temporal ordering and introduce look-ahead bias. Required for paper.
-
         train_eval = Evaluator()
         val_eval = Evaluator()
 
@@ -277,7 +234,6 @@ def train(
         if epoch_callback:
             epoch_callback(epoch, epochs, train_losses, val_losses, val_results)
 
-        # Best model checkpointing
         if val_auc > best_val_auc:
             best_val_auc = val_auc
             patience_counter = 0
@@ -299,3 +255,4 @@ def train(
 
     print(f"\n[Trainer] Training complete. Best Val AUC: {best_val_auc:.4f}")
     return {"history": history, "best_val_auc": best_val_auc}
+

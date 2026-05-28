@@ -1,17 +1,3 @@
-"""
-FAPT-GNN: Fragility-Aware Phase Transition Graph Neural Network
-Full integrated model — Master Module
-
-Pipeline:
-  Raw Data → Multi-layer Graph → Fragility Encoder (raw estimation)
-           → GNN (fragility-aware attention)
-           → Fragility Encoder (refined with GNN embeddings)
-           → Energy Layer E(t)
-           → Energy Sequence Processor (ΔE, ΔΔE)
-           → Temporal Transformer
-           → Phase Transition Head (crash prob, TTE, instability)
-"""
-
 import torch
 import torch.nn as nn
 from typing import List, Optional, Tuple, Dict
@@ -23,23 +9,7 @@ from models.energy_layer import EnergyLayer, EnergySequenceProcessor
 from models.temporal_model import TransformerTemporalModel, LSTMTemporalModel
 from models.phase_head import PhaseTransitionHead, ShockSimulator
 
-
 class FAPT_GNN(nn.Module):
-    """
-    Fragility-Aware Phase Transition GNN — Full Model
-
-    As described in:
-    "Energy-Based Modeling of Systemic Fragility and Phase Transitions
-     in Financial Networks" [your paper]
-
-    Args:
-        node_feature_dim : number of input features per node (default 7)
-        gnn_hidden_dim   : GNN hidden dimension
-        temporal_d_model : Transformer d_model
-        seq_len          : number of timesteps in input sequence
-        use_transformer  : True=Transformer, False=LSTM temporal model
-        dropout          : dropout rate
-    """
 
     def __init__(
         self,
@@ -117,7 +87,6 @@ class FAPT_GNN(nn.Module):
         self.shock_simulator = ShockSimulator(self.energy_layer)
 
         # ── Graph mean-pooling ────────────────────────────────────────
-        # Project from gnn_hidden_dim → gnn_hidden_dim (for temporal input)
         self.graph_pool_proj = nn.Sequential(
             nn.Linear(gnn_hidden_dim, gnn_hidden_dim),
             nn.LayerNorm(gnn_hidden_dim),
@@ -133,36 +102,23 @@ class FAPT_GNN(nn.Module):
         self,
         graph: Data,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """
-        Process a single graph snapshot at time t.
-
-        Returns:
-            F        : (N,) fragility scores
-            h_graph  : (hidden_dim,) graph-level embedding (mean pooled)
-            E        : scalar system energy E(t)
-        """
-        x = graph.x                    # (N, d)
-        edge_index = graph.edge_index  # (2, E)
-        edge_attr = graph.edge_attr    # (E, 1)
+        
+        x = graph.x
+        edge_index = graph.edge_index
+        edge_attr = graph.edge_attr
         adj = graph.adj if hasattr(graph, 'adj') else None
 
-        # Step 1: Initial fragility from raw features (before GNN)
         _, F_raw = self.fragility_encoder.forward_raw(x)
 
-        # Step 2: GNN with fragility-aware attention
-        h_gnn = self.gnn(x, edge_index, F_raw, edge_attr)  # (N, hidden)
+        h_gnn = self.gnn(x, edge_index, F_raw, edge_attr)
 
-        # Step 3: Refined fragility using GNN embeddings
-        _, F = self.fragility_encoder(x, h_gnn)  # (N,)
+        _, F = self.fragility_encoder(x, h_gnn)
 
-        # Step 4: Graph-level embedding (mean pooling)
-        h_graph = self.graph_pool_proj(h_gnn.mean(dim=0))  # (hidden,)
+        h_graph = self.graph_pool_proj(h_gnn.mean(dim=0))
 
-        # Step 5: System energy E(t)
         if adj is not None:
             E = self.energy_layer(F, adj)
         else:
-            # Approximate adj from edge_index if not provided
             N = x.size(0)
             adj_approx = torch.zeros(N, N, device=x.device)
             if edge_attr is not None:
@@ -175,24 +131,11 @@ class FAPT_GNN(nn.Module):
 
     def forward(
         self,
-        graph_sequence: List[Data],  # list of T graphs
+        graph_sequence: List[Data],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, List[torch.Tensor]]:
-        """
-        Forward pass on a sequence of T graph snapshots.
-
-        Args:
-            graph_sequence: list of T PyG Data objects (one per timestep)
-
-        Returns:
-            crash_prob   : (1,) or (B,) — crash probability at time t
-            time_to_crash: (1,) or (B,) — days to crash
-            instability  : (1,) or (B,) — instability index
-            energy_seq   : (T,) — energy sequence E(t-k:t)
-            fragility_seq: list of (N,) — fragility per timestep
-        """
+        
         T = len(graph_sequence)
 
-        # Process each graph in the sequence
         energy_values = []
         graph_embeddings = []
         fragility_seq = []
@@ -203,25 +146,19 @@ class FAPT_GNN(nn.Module):
             graph_embeddings.append(h_graph)
             fragility_seq.append(F)
 
-        # Stack sequences
-        energy_seq_tensor = torch.stack(energy_values, dim=0)        # (T,)
-        graph_embed_seq = torch.stack(graph_embeddings, dim=0)       # (T, hidden)
+        energy_seq_tensor = torch.stack(energy_values, dim=0)
+        graph_embed_seq = torch.stack(graph_embeddings, dim=0)
 
-        # Unsqueeze for batch dim (batch_size=1)
-        energy_seq_batch = energy_seq_tensor.unsqueeze(0)            # (1, T)
-        graph_embed_batch = graph_embed_seq.unsqueeze(0)             # (1, T, hidden)
+        energy_seq_batch = energy_seq_tensor.unsqueeze(0)
+        graph_embed_batch = graph_embed_seq.unsqueeze(0)
 
-        # Energy features: (1, T, 32)
         energy_features = self.energy_processor(energy_seq_batch)
 
-        # Temporal model: (1, T, d_model)
         temporal_out = self.temporal_model(energy_features, graph_embed_batch)
 
-        # Use LAST timestep for prediction
-        z = temporal_out[:, -1, :]                                    # (1, d_model)
-        E_current = energy_seq_tensor[-1].unsqueeze(0)               # (1,)
+        z = temporal_out[:, -1, :]
+        E_current = energy_seq_tensor[-1].unsqueeze(0)
 
-        # Phase transition head
         crash_prob, time_to_crash, instability = self.phase_head(z, E_current)
 
         return crash_prob, time_to_crash, instability, energy_seq_tensor, fragility_seq
@@ -232,11 +169,7 @@ class FAPT_GNN(nn.Module):
         return_shock_analysis: bool = False,
         tickers: Optional[list] = None,
     ) -> Dict:
-        """
-        Inference-time prediction with optional shock analysis.
-
-        Returns dict with all outputs + interpretability info.
-        """
+        
         self.eval()
         with torch.no_grad():
             crash_prob, tte, instability, energy_seq, fragility_seq = self(graph_sequence)
@@ -266,9 +199,8 @@ class FAPT_GNN(nn.Module):
 
         return result
 
-
 def build_model(config: dict) -> FAPT_GNN:
-    """Build model from config dict."""
+    
     return FAPT_GNN(
         node_feature_dim=config.get("node_feature_dim", 7),
         gnn_hidden_dim=config.get("gnn_hidden_dim", 64),
@@ -283,11 +215,9 @@ def build_model(config: dict) -> FAPT_GNN:
         use_transformer=config.get("use_transformer", True),
     )
 
-
 if __name__ == "__main__":
     from torch_geometric.data import Data
 
-    # Create dummy graph sequence
     N, d, T = 50, 7, 30
     graph_seq = []
     for t in range(T):
@@ -315,3 +245,4 @@ if __name__ == "__main__":
     print(f"  Energy sequence   : len={len(energy_seq)}, last={energy_seq[-1].item():.4f}")
     print(f"  Fragility (last t): min={fragility_seq[-1].min():.3f}, max={fragility_seq[-1].max():.3f}")
     print(f"{'='*50}")
+

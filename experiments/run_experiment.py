@@ -1,23 +1,3 @@
-"""
-FAPT-GNN End-to-End Experiment Runner
-
-Usage:
-  python experiments/run_experiment.py
-  python experiments/run_experiment.py --config experiments/config.yaml
-  python experiments/run_experiment.py --start 2018-01-01 --end 2023-12-31
-
-This script runs the full pipeline:
-  1. Download & cache NIFTY 50 data
-  2. Feature engineering
-  3. Build dynamic multi-layer graphs
-  4. Create crash labels
-  5. Build sliding window dataset
-  6. Train FAPT-GNN
-  7. Evaluate on test set
-  8. Run shock simulation analysis
-  9. Save results
-"""
-
 import os
 import sys
 import argparse
@@ -28,7 +8,6 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 
-# Ensure project root is on path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from data.data_pipeline import load_all_data
@@ -47,11 +26,9 @@ from training.evaluate import (
     compute_early_warning_score, compute_energy_crash_correlation
 )
 
-
 def load_config(config_path: str) -> dict:
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
-
 
 def run_experiment(config: dict):
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -65,7 +42,6 @@ def run_experiment(config: dict):
     os.makedirs(config["output"]["checkpoint_dir"], exist_ok=True)
 
     # ─────────────────────────────────────────
-    # STEP 1: Load Data
     # ─────────────────────────────────────────
     print("📊 STEP 1: Loading market data...")
     data = load_all_data(
@@ -75,7 +51,6 @@ def run_experiment(config: dict):
     )
 
     # ─────────────────────────────────────────
-    # STEP 2: Sentiment
     # ─────────────────────────────────────────
     print("\n📰 STEP 2: Loading sentiment features...")
     sentiment_features = load_or_build_sentiment(
@@ -86,7 +61,6 @@ def run_experiment(config: dict):
     )
 
     # ─────────────────────────────────────────
-    # STEP 3: Feature Engineering
     # ─────────────────────────────────────────
     print("\n⚙️  STEP 3: Computing fragility features...")
     features = build_all_features(
@@ -102,7 +76,6 @@ def run_experiment(config: dict):
     node_feature_dict = build_node_feature_matrix(features)
 
     # ─────────────────────────────────────────
-    # STEP 4: Build Graphs
     # ─────────────────────────────────────────
     print("\n🕸️  STEP 4: Building dynamic multi-layer graphs...")
     graphs, graph_dates = build_graph_sequence(
@@ -113,7 +86,6 @@ def run_experiment(config: dict):
     )
 
     # ─────────────────────────────────────────
-    # STEP 5: Create Labels
     # ─────────────────────────────────────────
     print("\n🏷️  STEP 5: Creating crash labels...")
     returns = features["returns"]
@@ -129,10 +101,8 @@ def run_experiment(config: dict):
     )
 
     # ─────────────────────────────────────────
-    # STEP 6: Build Dataset
     # ─────────────────────────────────────────
     print("\n📦 STEP 6: Building sliding window dataset...")
-    # VIX as energy proxy (aligned to graph dates)
     vix_proxy = data["vix"].reindex(returns.index).ffill().bfill()
 
     dataset = build_sliding_window_dataset(
@@ -149,12 +119,10 @@ def run_experiment(config: dict):
     )
 
     # ─────────────────────────────────────────
-    # STEP 7: Build Model
     # ─────────────────────────────────────────
     print("\n🧠 STEP 7: Building FAPT-GNN model...")
     model = build_model(config["model"])
 
-    # Compute class weight for imbalanced data
     pos_weight = compute_pos_weight(train_ds)
     print(f"[Loss] Class weight (pos/neg): {pos_weight:.2f}x")
 
@@ -169,7 +137,6 @@ def run_experiment(config: dict):
     )
 
     # ─────────────────────────────────────────
-    # STEP 8: Train
     # ─────────────────────────────────────────
     print("\n🚀 STEP 8: Training FAPT-GNN...")
     history = train(
@@ -183,11 +150,9 @@ def run_experiment(config: dict):
     )
 
     # ─────────────────────────────────────────
-    # STEP 9: Test Evaluation
     # ─────────────────────────────────────────
     print("\n📈 STEP 9: Evaluating on test set...")
 
-    # Load best checkpoint
     ckpt_path = os.path.join(config["output"]["checkpoint_dir"], "best_model.pt")
     if os.path.exists(ckpt_path):
         ckpt = torch.load(ckpt_path, map_location=device, weights_only=False)
@@ -204,7 +169,6 @@ def run_experiment(config: dict):
     print_evaluation_report(metrics, ews, corr, model_name="FAPT-GNN (NIFTY 50)")
 
     # ─────────────────────────────────────────
-    # STEP 10: Shock Simulation
     # ─────────────────────────────────────────
     print("\n⚠️  STEP 10: Running shock simulations on last test sample...")
     if test_ds:
@@ -229,7 +193,6 @@ def run_experiment(config: dict):
                     print(f"    → {s}")
 
     # ─────────────────────────────────────────
-    # STEP 11: Save Results
     # ─────────────────────────────────────────
     results_path = os.path.join(config["output"]["results_dir"], "test_results.json")
     save_results = {
@@ -246,7 +209,6 @@ def run_experiment(config: dict):
     print(f"\n✅ Experiment complete!\n")
     return save_results
 
-
 def main():
     parser = argparse.ArgumentParser(description="FAPT-GNN Experiment Runner")
     parser.add_argument("--config", default="experiments/config.yaml", help="Path to config file")
@@ -258,7 +220,6 @@ def main():
 
     config = load_config(args.config)
 
-    # CLI overrides
     if args.start:
         config["data"]["start_date"] = args.start
     if args.end:
@@ -270,6 +231,6 @@ def main():
 
     run_experiment(config)
 
-
 if __name__ == "__main__":
     main()
+

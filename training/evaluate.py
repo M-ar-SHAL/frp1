@@ -1,14 +1,3 @@
-"""
-Evaluation Metrics for FAPT-GNN
-
-Metrics for research paper:
-  1. AUC-ROC
-  2. F1-score (critical due to class imbalance)
-  3. Early Warning Score (EWS) at t+5, t+10, t+15 days
-  4. Precision-Recall AUC
-  5. Energy-Crash correlation (interpretability metric)
-"""
-
 import numpy as np
 import pandas as pd
 import torch
@@ -21,18 +10,14 @@ import warnings
 
 warnings.filterwarnings("ignore")
 
-
 def compute_all_metrics(
-    crash_probs: np.ndarray,     # (N,) predicted crash probabilities
-    crash_labels: np.ndarray,    # (N,) true binary labels
-    tte_preds: Optional[np.ndarray] = None,   # time-to-crash predictions
-    tte_true: Optional[np.ndarray] = None,    # true time-to-crash
+    crash_probs: np.ndarray,
+    crash_labels: np.ndarray,
+    tte_preds: Optional[np.ndarray] = None,
+    tte_true: Optional[np.ndarray] = None,
     threshold: float = 0.5,
 ) -> Dict:
-    """
-    Compute full evaluation metrics suite.
-    """
-    # Optimal threshold via F1 maximization
+    
     best_f1, best_thresh = 0, threshold
     for t in np.arange(0.1, 0.9, 0.05):
         preds = (crash_probs >= t).astype(int)
@@ -43,23 +28,19 @@ def compute_all_metrics(
 
     preds_binary = (crash_probs >= best_thresh).astype(int)
 
-    # Metrics
     if len(np.unique(crash_labels)) > 1:
         auc_roc = roc_auc_score(crash_labels, crash_probs)
     else:
         auc_roc = 0.5
 
-    # Refined Threshold Search: Maximize F1 but penalize degenerate (all-1s or all-0s) results
     best_f1, best_thresh = 0, 0.5
     for t in np.arange(0.1, 0.9, 0.05):
         preds = (crash_probs >= t).astype(int)
         f1 = f1_score(crash_labels, preds, zero_division=0)
         
-        # Check if this threshold is degenerate (predicts only one class)
         unique_preds = np.unique(preds)
         is_degenerate = len(unique_preds) < 2
         
-        # We prefer slightly lower F1 over a degenerate "predict all" solution
         effective_f1 = f1 * 0.5 if is_degenerate else f1
         
         if effective_f1 > best_f1:
@@ -68,15 +49,12 @@ def compute_all_metrics(
 
     preds_binary = (crash_probs >= best_thresh).astype(int)
 
-    # Precision-Recall AUC
     precision, recall, _ = precision_recall_curve(crash_labels, crash_probs)
     pr_auc = auc(recall, precision)
 
-    # Final Metrics at best threshold
     f1 = f1_score(crash_labels, preds_binary, zero_division=0)
     tn, fp, fn, tp = confusion_matrix(crash_labels, preds_binary, labels=[0, 1]).ravel() if crash_labels.sum() > 0 else (0, 0, 0, 0)
 
-    # Balanced Accuracy: (Sensitivity + Specificity) / 2
     sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
     specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
     balanced_acc = (sensitivity + specificity) / 2
@@ -95,7 +73,6 @@ def compute_all_metrics(
         "true_negatives": int(tn),
     }
 
-    # Time-to-crash metrics (if provided)
     if tte_preds is not None and tte_true is not None:
         mask = crash_labels == 1
         if mask.sum() > 0:
@@ -104,29 +81,19 @@ def compute_all_metrics(
 
     return metrics
 
-
 def compute_early_warning_score(
-    crash_probs: np.ndarray,   # (T,) full time series of predictions
-    crash_labels: np.ndarray,  # (T,) binary crash labels
+    crash_probs: np.ndarray,
+    crash_labels: np.ndarray,
     horizons: List[int] = [5, 10, 15],
 ) -> Dict:
-    """
-    Early Warning Score (EWS): measures how well the model warns
-    BEFORE a crash occurs.
-
-    For each horizon h, check if the model's crash probability was high
-    in the h-day window BEFORE each crash event.
-
-    EWS@h = fraction of crash events preceded by high alarm (>0.5) within h days.
-    """
+    
     T = len(crash_labels)
-    crash_dates = np.where(crash_labels == 1)[0]  # indices of crash days
+    crash_dates = np.where(crash_labels == 1)[0]
 
     ews = {}
     for h in horizons:
         caught = 0
         for crash_idx in crash_dates:
-            # Check window [crash_idx - h, crash_idx)
             start = max(0, crash_idx - h)
             window = crash_probs[start:crash_idx]
             if len(window) > 0 and window.max() > 0.5:
@@ -136,28 +103,18 @@ def compute_early_warning_score(
 
     return ews
 
-
 def compute_energy_crash_correlation(
-    energy_seq: np.ndarray,     # (T,) E(t) values
-    crash_labels: np.ndarray,   # (T,) binary crash labels
+    energy_seq: np.ndarray,
+    crash_labels: np.ndarray,
     lead_days: int = 10,
 ) -> Dict:
-    """
-    Compute correlation between energy E(t) and crash labels.
-    Tests the paper's core hypothesis: energy spikes BEFORE crashes.
-
-    Returns:
-      - contemporaneous correlation (at same day)
-      - lead correlation (E at t-lead predicts crash at t)
-    """
+    
     T = min(len(energy_seq), len(crash_labels))
     E = energy_seq[:T]
     Y = crash_labels[:T]
 
-    # Contemporaneous
     corr_now = np.corrcoef(E, Y)[0, 1]
 
-    # Lead correlation
     if lead_days < T:
         E_lead = E[:-lead_days]
         Y_future = Y[lead_days:]
@@ -170,9 +127,8 @@ def compute_energy_crash_correlation(
         f"energy_crash_corr_lead{lead_days}d": round(float(corr_lead), 4),
     }
 
-
 def print_evaluation_report(metrics: Dict, ews: Dict, corr: Dict, model_name: str = "FAPT-GNN"):
-    """Print a formatted evaluation report (suitable for paper Table)."""
+    
     print(f"\n{'='*60}")
     print(f"  EVALUATION REPORT: {model_name}")
     print(f"{'='*60}")
@@ -193,9 +149,7 @@ def print_evaluation_report(metrics: Dict, ews: Dict, corr: Dict, model_name: st
         print(f"\n[TIME] Time-to-Crash MAE (crash events only): {metrics['tte_mae_on_crashes']:.2f} days")
     print(f"{'='*60}\n")
 
-
 class Evaluator:
-    """Stateful evaluator to collect predictions over full epoch."""
 
     def __init__(self):
         self.reset()
@@ -240,15 +194,13 @@ class Evaluator:
 
         return {"metrics": metrics, "ews": ews, "energy_corr": corr}
 
-
 if __name__ == "__main__":
-    # Simulate outputs
     np.random.seed(42)
     T = 500
     labels = np.zeros(T)
-    labels[np.random.choice(T, 25, replace=False)] = 1  # 5% crash rate
+    labels[np.random.choice(T, 25, replace=False)] = 1
 
-    probs = labels * 0.7 + np.random.rand(T) * 0.3  # noisy predictions
+    probs = labels * 0.7 + np.random.rand(T) * 0.3
 
     metrics = compute_all_metrics(probs, labels)
     ews = compute_early_warning_score(probs, labels)
@@ -256,3 +208,4 @@ if __name__ == "__main__":
     corr = compute_energy_crash_correlation(energy, labels)
 
     print_evaluation_report(metrics, ews, corr)
+
