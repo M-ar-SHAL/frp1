@@ -1,17 +1,3 @@
-"""
-Baseline Models for FAPT-GNN Ablation Study
-
-Baselines compared in paper (Table 2):
-  B1 — MLP (no graph, no temporal)
-  B2 — LSTM (temporal only, no graph)
-  B3 — GNN-only (graph, no temporal, no energy)
-  B4 — GNN + LSTM (no fragility, no energy)
-  B5 — FAPT-GNN w/o Fragility Encoder
-  B6 — FAPT-GNN w/o Energy Layer
-  B7 — FAPT-GNN w/o Multi-layer Graph (correlation-only)
-  B8 — FAPT-GNN FULL (proposed)
-"""
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,20 +5,15 @@ from typing import List, Tuple, Optional
 from torch_geometric.data import Data
 from torch_geometric.nn import GATConv, global_mean_pool
 
-
 # ─────────────────────────────────────────────────────────────────
-# B1: MLP Baseline (no graph, no temporal)
 # ─────────────────────────────────────────────────────────────────
 
 class MLPBaseline(nn.Module):
-    """
-    Simplest baseline: MLP over mean-pooled node features.
-    No graph structure, no temporal modeling.
-    """
+    
     def __init__(self, node_feature_dim: int = 7, seq_len: int = 30, hidden: int = 128):
         super().__init__()
         self.seq_len = seq_len
-        input_dim = node_feature_dim * seq_len  # flatten all timesteps
+        input_dim = node_feature_dim * seq_len
         self.net = nn.Sequential(
             nn.LayerNorm(input_dim),
             nn.Linear(input_dim, hidden),
@@ -48,26 +29,20 @@ class MLPBaseline(nn.Module):
 
     def forward(self, graph_sequence: List[Data]):
         T = len(graph_sequence)
-        # Mean pool nodes at each timestep → (T, d)
         seq = torch.stack([g.x.mean(dim=0) for g in graph_sequence], dim=0)
-        seq_flat = seq.flatten().unsqueeze(0)            # (1, T*d)
+        seq_flat = seq.flatten().unsqueeze(0)
         out = self.net(seq_flat)
-        crash_prob = out.squeeze(-1)                     # (1,)
+        crash_prob = out.squeeze(-1)
         tte = torch.tensor([30.0], device=seq.device)
         instability = torch.tensor([0.0], device=seq.device)
         energy_seq = torch.zeros(T, device=seq.device)
         return crash_prob, tte, instability, energy_seq, []
 
-
 # ─────────────────────────────────────────────────────────────────
-# B2: LSTM Baseline (temporal only, no graph)
 # ─────────────────────────────────────────────────────────────────
 
 class LSTMBaseline(nn.Module):
-    """
-    LSTM over mean-pooled node features across timesteps.
-    Temporal modeling without graph structure.
-    """
+    
     def __init__(
         self,
         node_feature_dim: int = 7,
@@ -93,10 +68,9 @@ class LSTMBaseline(nn.Module):
         )
 
     def forward(self, graph_sequence: List[Data]):
-        # Mean pool nodes at each step → (1, T, d)
         seq = torch.stack([g.x.mean(dim=0) for g in graph_sequence], dim=0).unsqueeze(0)
-        out, _ = self.lstm(seq)                         # (1, T, hidden)
-        z = out[:, -1, :]                               # (1, hidden)
+        out, _ = self.lstm(seq)
+        z = out[:, -1, :]
         crash_prob = self.crash_head(z).squeeze(-1)
         tte = self.tte_head(z).squeeze(-1)
         T = len(graph_sequence)
@@ -105,16 +79,11 @@ class LSTMBaseline(nn.Module):
         energy_seq = torch.zeros(T, device=device)
         return crash_prob, tte, instability, energy_seq, []
 
-
 # ─────────────────────────────────────────────────────────────────
-# B3: GNN-Only Baseline (graph, no temporal, no energy)
 # ─────────────────────────────────────────────────────────────────
 
 class GNNOnlyBaseline(nn.Module):
-    """
-    Single-step GNN on the last graph snapshot. No temporal, no energy.
-    Tests whether graph structure alone is sufficient.
-    """
+    
     def __init__(
         self,
         node_feature_dim: int = 7,
@@ -145,7 +114,6 @@ class GNNOnlyBaseline(nn.Module):
         self.dropout = dropout
 
     def forward(self, graph_sequence: List[Data]):
-        # Use only the LAST graph
         g = graph_sequence[-1]
         x = g.x
         ei = g.edge_index
@@ -156,7 +124,7 @@ class GNNOnlyBaseline(nn.Module):
             x = F.elu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
 
-        h = x.mean(dim=0, keepdim=True)                # (1, hidden)
+        h = x.mean(dim=0, keepdim=True)
         crash_prob = self.crash_head(h).squeeze(-1)
         tte = self.tte_head(h).squeeze(-1)
         device = x.device
@@ -164,16 +132,11 @@ class GNNOnlyBaseline(nn.Module):
         energy_seq = torch.zeros(T, device=device)
         return crash_prob, tte, instability, energy_seq, []
 
-
 # ─────────────────────────────────────────────────────────────────
-# B4: GNN + LSTM (no fragility, no energy layer)
 # ─────────────────────────────────────────────────────────────────
 
 class GNNLSTMBaseline(nn.Module):
-    """
-    Standard GNN + LSTM pipeline. No fragility-aware attention, no energy layer.
-    Represents the strongest prior-art baseline.
-    """
+    
     def __init__(
         self,
         node_feature_dim: int = 7,
@@ -219,14 +182,14 @@ class GNNLSTMBaseline(nn.Module):
             x = conv(x, ei)
             x = F.elu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
-        return x.mean(dim=0)               # (gnn_hidden,)
+        return x.mean(dim=0)
 
     def forward(self, graph_sequence: List[Data]):
         T = len(graph_sequence)
         embeds = torch.stack([self._gnn_forward(g) for g in graph_sequence], dim=0)
-        embeds = embeds.unsqueeze(0)       # (1, T, gnn_hidden)
+        embeds = embeds.unsqueeze(0)
         out, _ = self.lstm(embeds)
-        z = out[:, -1, :]                 # (1, lstm_hidden)
+        z = out[:, -1, :]
         crash_prob = self.crash_head(z).squeeze(-1)
         tte = self.tte_head(z).squeeze(-1)
         device = embeds.device
@@ -234,9 +197,7 @@ class GNNLSTMBaseline(nn.Module):
         energy_seq = torch.zeros(T, device=device)
         return crash_prob, tte, instability, energy_seq, []
 
-
 # ─────────────────────────────────────────────────────────────────
-# REGISTRY — easy access by name
 # ─────────────────────────────────────────────────────────────────
 
 BASELINE_REGISTRY = {
@@ -246,9 +207,8 @@ BASELINE_REGISTRY = {
     "GNN-LSTM": GNNLSTMBaseline,
 }
 
-
 def build_baseline(name: str, config: dict):
-    """Build a baseline model by name from config dict."""
+    
     if name not in BASELINE_REGISTRY:
         raise ValueError(f"Unknown baseline: {name}. Choose from {list(BASELINE_REGISTRY.keys())}")
     cls = BASELINE_REGISTRY[name]
@@ -258,7 +218,6 @@ def build_baseline(name: str, config: dict):
     ) if name == "MLP" else cls(
         node_feature_dim=config.get("node_feature_dim", 7),
     )
-
 
 if __name__ == "__main__":
     from torch_geometric.data import Data
@@ -276,3 +235,4 @@ if __name__ == "__main__":
         model = cls(node_feature_dim=d)
         cp, tte, inst, E, _ = model(graphs)
         print(f"{name:12s} | crash_prob={cp.item():.4f} | tte={tte.item():.2f}")
+

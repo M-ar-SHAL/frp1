@@ -1,13 +1,9 @@
-"""
-Quick integration test: verify dashboard data loading and model training work
-"""
 import sys
 import os
 sys.path.insert(0, '.')
 
 print("[Test] Starting FAPT-GNN integration test...")
 
-# Test 1: Data loading
 print("\n[Test 1] Loading data...")
 try:
     from data.data_pipeline import load_all_data
@@ -19,7 +15,6 @@ try:
     data = load_all_data(start='2023-01-01', end='2024-01-01')
     print(f"✓ Data loaded: {len(data['prices'])} days")
     
-    # Test labels
     labels = create_labels(
         nifty_series=data['nifty'],
         returns=data['prices'].pct_change(),
@@ -35,7 +30,6 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-# Test 2: Feature engineering
 print("\n[Test 2] Feature engineering...")
 try:
     sentiment = load_or_build_sentiment(
@@ -65,7 +59,6 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-# Test 3: Graph building
 print("\n[Test 3] Building graphs...")
 try:
     graphs, dates = build_graph_sequence(
@@ -82,7 +75,6 @@ except Exception as e:
     traceback.print_exc()
     sys.exit(1)
 
-# Test 4: Model training
 print("\n[Test 4] Training FAPT-GNN...")
 try:
     from training.trainer import build_sliding_window_dataset, walk_forward_split, train
@@ -112,10 +104,9 @@ try:
     
     criterion = FAPTGNNLoss(alpha=1.0, beta=0.3, gamma=0.2, delta=0.1, eta=0.1, pos_weight=10.0)
     
-    # Train for 1 epoch
     history = train(
         model=model,
-        train_dataset=train_ds[:10],  # Use only 10 batches for speed
+        train_dataset=train_ds[:10],
         val_dataset=val_ds[:5],
         criterion=criterion,
         config={'epochs': 1, 'lr': 0.001, 'batch_size': 1},
@@ -131,5 +122,6 @@ except Exception as e:
     sys.exit(1)
 
 print("\n" + "="*60)
-print("[OK] All integration tests passed!")  # was: ✅
+print("[OK] All integration tests passed!")
 print("="*60)
+
